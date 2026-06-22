@@ -1,36 +1,24 @@
 #include "OTAUpdater.h"
 #include "../config.h"
+#include "../cfg/AppConfig.h"
 #include "../logger/Logger.h"
 #include "../state.h"
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <Update.h>
 #include <ArduinoJson.h>
-#include <SPIFFS.h>
-#include <nvs_flash.h>
-#include <nvs.h>
-#include <mbedtls/md5.h>
+#include <LittleFS.h>
+#include <MD5Builder.h>
 
 static const char* loadRootCA() {
     static char ca[4096] = {};
     if (ca[0]) return ca;
-    File f = SPIFFS.open("/certs/github_root_ca.pem");
+    File f = LittleFS.open("/certs/github_root_ca.pem");
     if (!f) return nullptr;
     size_t n = f.readBytes(ca, sizeof(ca) - 1);
     ca[n] = 0;
     f.close();
     return ca;
-}
-
-static String getManifestUrl() {
-    nvs_handle_t nvs;
-    char url[256] = OTA_MANIFEST_URL_DEFAULT;
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs) == ESP_OK) {
-        size_t sz = sizeof(url);
-        nvs_get_str(nvs, NVS_OTA_MANIFEST_URL, url, &sz);
-        nvs_close(nvs);
-    }
-    return String(url);
 }
 
 static int semverCompare(const char* a, const char* b) {
@@ -60,7 +48,7 @@ bool OTAUpdater::checkGitHub(OTAManifest& manifest) {
 
     HTTPClient http;
     http.setTimeout(OTA_TIMEOUT_MS);
-    if (!http.begin(client, getManifestUrl())) {
+    if (!http.begin(client, String(g_cfg.ota_manifest_url))) {
         LOG_ERROR("OTA", "HTTP begin failed for manifest");
         return false;
     }
@@ -121,9 +109,8 @@ bool OTAUpdater::downloadAndFlash(const char* url, int partition, const char* ex
         return false;
     }
 
-    mbedtls_md5_context md5ctx;
-    mbedtls_md5_init(&md5ctx);
-    mbedtls_md5_starts(&md5ctx);
+    MD5Builder md5;
+    md5.begin();
 
     WiFiClient* stream = http.getStreamPtr();
     uint8_t buf[OTA_BUF_SIZE];
@@ -136,7 +123,7 @@ bool OTAUpdater::downloadAndFlash(const char* url, int partition, const char* ex
         size_t n = stream->readBytes(buf, toRead);
         if (n == 0) break;
 
-        mbedtls_md5_update(&md5ctx, buf, n);
+        md5.add(buf, n);
         if (Update.write(buf, n) != n) {
             LOG_ERROR("OTA", "Update.write failed");
             Update.abort();
@@ -150,15 +137,11 @@ bool OTAUpdater::downloadAndFlash(const char* url, int partition, const char* ex
     }
     http.end();
 
-    uint8_t digest[16];
-    mbedtls_md5_finish(&md5ctx, digest);
-    mbedtls_md5_free(&md5ctx);
+    md5.calculate();
+    String calcMd5 = md5.toString();
 
-    char calcMd5[33];
-    for (int i = 0; i < 16; i++) snprintf(calcMd5 + i*2, 3, "%02x", digest[i]);
-
-    if (strcasecmp(calcMd5, expectedMd5) != 0) {
-        LOG_ERROR("OTA", "MD5 mismatch: expected=%s got=%s", expectedMd5, calcMd5);
+    if (!calcMd5.equalsIgnoreCase(expectedMd5)) {
+        LOG_ERROR("OTA", "MD5 mismatch: expected=%s got=%s", expectedMd5, calcMd5.c_str());
         Update.abort();
         return false;
     }

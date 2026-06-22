@@ -8,10 +8,6 @@ public:
     static void taskAutoTuner(void* param);
 
 private:
-    static float  s_threshold;   // Return Loss threshold (dB)
-    static uint16_t s_coarseL;
-    static uint16_t s_coarseC;
-
     // Returns best {L, C, mode} and SWR found; true = found below threshold
     static bool runTune(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode);
 

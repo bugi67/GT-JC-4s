@@ -1,29 +1,13 @@
 #include "MQTTClient.h"
 #include "../config.h"
+#include "../cfg/AppConfig.h"
 #include "../logger/Logger.h"
 #include "../state.h"
 #include "../tuner/I2CController.h"
 #include <WiFi.h>
-#include <nvs_flash.h>
-#include <nvs.h>
 
-static WiFiClient      s_wifiClient;
-static PubSubClient    s_mqtt(s_wifiClient);
-static char            s_server[64] = {};
-static uint16_t        s_port       = DEFAULT_MQTT_PORT;
-static bool            s_enabled    = true;
-
-static void nvsLoad() {
-    nvs_handle_t nvs;
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs) != ESP_OK) return;
-    size_t sz = sizeof(s_server);
-    nvs_get_str(nvs, NVS_MQTT_SERVER, s_server, &sz);
-    nvs_get_u16(nvs, NVS_MQTT_PORT, &s_port);
-    uint8_t en = 1;
-    nvs_get_u8(nvs, NVS_MQTT_ENABLED, &en);
-    s_enabled = (bool)en;
-    nvs_close(nvs);
-}
+static WiFiClient   s_wifiClient;
+static PubSubClient s_mqtt(s_wifiClient);
 
 void MQTTClient::onMessage(char* topic, byte* payload, unsigned int len) {
     char val[32] = {};
@@ -74,7 +58,7 @@ void MQTTClient::subscribe() {
 
 bool MQTTClient::ensureConnected() {
     if (s_mqtt.connected()) return true;
-    LOG_WARN("MQTT", "Disconnected – reconnecting to %s:%u", s_server, s_port);
+    LOG_WARN("MQTT", "Disconnected – reconnecting to %s:%u", g_cfg.mqtt_server, g_cfg.mqtt_port);
 
     char clientId[24];
     snprintf(clientId, sizeof(clientId), "GT-JC-4s-%06llX", (uint64_t)ESP.getEfuseMac() & 0xFFFFFF);
@@ -89,12 +73,11 @@ bool MQTTClient::ensureConnected() {
 }
 
 bool MQTTClient::begin() {
-    nvsLoad();
-    if (!s_enabled || strlen(s_server) == 0) {
+    if (!g_cfg.mqtt_enabled || strlen(g_cfg.mqtt_server) == 0) {
         LOG_INFO("MQTT", "MQTT disabled or no server configured");
         return false;
     }
-    s_mqtt.setServer(s_server, s_port);
+    s_mqtt.setServer(g_cfg.mqtt_server, g_cfg.mqtt_port);
     s_mqtt.setCallback(onMessage);
     return true;
 }
@@ -139,7 +122,7 @@ void MQTTClient::taskMQTT(void* param) {
     static TunerState::TuneState lastTuneState = TunerState::TuneState::IDLE;
 
     for (;;) {
-        if (s_enabled && strlen(s_server) > 0) {
+        if (g_cfg.mqtt_enabled && strlen(g_cfg.mqtt_server) > 0) {
             if (WiFi.status() == WL_CONNECTED) {
                 ensureConnected();
                 if (s_mqtt.connected()) {

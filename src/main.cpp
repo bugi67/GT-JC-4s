@@ -1,8 +1,9 @@
 #include <Arduino.h>
 #include <nvs_flash.h>
-#include <SPIFFS.h>
+#include <LittleFS.h>
 #include "config.h"
 #include "state.h"
+#include "cfg/AppConfig.h"
 #include "logger/Logger.h"
 #include "tuner/I2CController.h"
 #include "tuner/AutoTuner.h"
@@ -64,45 +65,40 @@ void setup() {
     Logger::init();
     Logger::setLevel(LogLevel::INFO);
 
-    // 3. NVS
+    // 3. NVS (required by ESP32 WiFi stack internally)
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         nvs_flash_erase();
         nvs_flash_init();
     }
 
-    // Restore log level from NVS
-    nvs_handle_t nvs;
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs) == ESP_OK) {
-        uint8_t ll = 2;
-        nvs_get_u8(nvs, NVS_LOG_LEVEL, &ll);
-        nvs_close(nvs);
-        Logger::setLevel((LogLevel)ll);
+    // 4. LittleFS + config — must happen before WiFi/MQTT/OTA begin()
+    if (!LittleFS.begin(true)) {
+        LOG_ERROR("System", "LittleFS mount failed");
     }
+    Config::load();
+    Logger::setLevel((LogLevel)g_cfg.log_level);
 
     LOG_INFO("System", "GT-JC-4s firmware v%s starting", FIRMWARE_VERSION);
 
-    // 4. FreeRTOS primitives
+    // 5. FreeRTOS primitives
     g_stateMutex   = xSemaphoreCreateMutex();
     g_tuneStartSem = xSemaphoreCreateBinary();
     g_tuneAbortSem = xSemaphoreCreateBinary();
     g_i2cCmdQueue  = xQueueCreate(I2C_CMD_QUEUE_DEPTH, sizeof(I2CCommand));
 
-    // 5. I2C + hardware probe
+    // 6. I2C + hardware probe
     if (!I2CController::init()) {
         LOG_WARN("System", "Some I2C devices not found – check wiring");
-    }
-
-    // 6. SPIFFS
-    if (!SPIFFS.begin(true)) {
-        LOG_ERROR("System", "SPIFFS mount failed");
     }
 
     // 7. Presets
     PresetStore::begin();
 
-    // 8. WiFi
-    WiFiManager::begin();
+    // 8. WiFi — if no credentials or connection fails, run captive portal (never returns)
+    if (!WiFiManager::begin()) {
+        WiFiManager::runCaptivePortal();
+    }
 
     // 9. MQTT
     MQTTClient::begin();
