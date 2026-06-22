@@ -26,19 +26,19 @@ jobs:
       - name: Build firmware
         run: pio run
 
-      - name: Build filesystem (SPIFFS)
+      - name: Build filesystem (LittleFS)
         run: pio run --target buildfs
 
       - name: Compute MD5 checksums
         run: |
           FW=.pio/build/seeed_xiao_esp32c3/firmware.bin
-          FS=.pio/build/seeed_xiao_esp32c3/spiffs.bin
+          FS=.pio/build/seeed_xiao_esp32c3/littlefs.bin
           md5sum "$FW" | awk '{print $1}' > firmware.bin.md5
-          md5sum "$FS" | awk '{print $1}' > spiffs.bin.md5
-          echo "FW_MD5=$(cat firmware.bin.md5)" >> "$GITHUB_ENV"
-          echo "FS_MD5=$(cat spiffs.bin.md5)"  >> "$GITHUB_ENV"
-          echo "FW_SIZE=$(stat -c%s "$FW")"    >> "$GITHUB_ENV"
-          echo "FS_SIZE=$(stat -c%s "$FS")"    >> "$GITHUB_ENV"
+          md5sum "$FS" | awk '{print $1}' > littlefs.bin.md5
+          echo "FW_MD5=$(cat firmware.bin.md5)"   >> "$GITHUB_ENV"
+          echo "FS_MD5=$(cat littlefs.bin.md5)"   >> "$GITHUB_ENV"
+          echo "FW_SIZE=$(stat -c%s "$FW")"       >> "$GITHUB_ENV"
+          echo "FS_SIZE=$(stat -c%s "$FS")"       >> "$GITHUB_ENV"
 
       - name: Generate release.json
         run: |
@@ -56,7 +56,7 @@ jobs:
               "size": ${FW_SIZE}
             },
             "fs": {
-              "url": "${BASE}/spiffs.bin",
+              "url": "${BASE}/littlefs.bin",
               "md5": "${FS_MD5}",
               "size": ${FS_SIZE}
             },
@@ -70,9 +70,9 @@ jobs:
         with:
           files: |
             .pio/build/seeed_xiao_esp32c3/firmware.bin
-            .pio/build/seeed_xiao_esp32c3/spiffs.bin
+            .pio/build/seeed_xiao_esp32c3/littlefs.bin
             firmware.bin.md5
-            spiffs.bin.md5
+            littlefs.bin.md5
             release.json
           generate_release_notes: false
           body_path: /dev/null

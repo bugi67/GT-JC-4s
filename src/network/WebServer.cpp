@@ -1,15 +1,14 @@
 #include "WebServer.h"
 #include "../config.h"
+#include "../cfg/AppConfig.h"
 #include "../logger/Logger.h"
 #include "../state.h"
 #include "../tuner/I2CController.h"
 #include "../tuner/PresetStore.h"
 #include "../ota/OTAUpdater.h"
-#include <SPIFFS.h>
+#include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <Update.h>
-#include <nvs_flash.h>
-#include <nvs.h>
 
 ::WebServer WebUI::s_server(WEB_PORT);
 
@@ -50,7 +49,7 @@ String WebUI::buildStatusJSON() {
 // ── Static file serving ───────────────────────────────────────────────────────
 
 void WebUI::handleRoot() {
-    File f = SPIFFS.open("/index.html");
+    File f = LittleFS.open("/index.html");
     if (!f) { sendError(404, "index.html not found"); return; }
     s_server.streamFile(f, "text/html");
     f.close();
@@ -62,8 +61,8 @@ void WebUI::handleNotFound() {
     if (path.endsWith(".js"))  contentType = "application/javascript";
     if (path.endsWith(".css")) contentType = "text/css";
 
-    if (SPIFFS.exists(path)) {
-        File f = SPIFFS.open(path);
+    if (LittleFS.exists(path)) {
+        File f = LittleFS.open(path);
         s_server.streamFile(f, contentType);
         f.close();
         return;
@@ -140,27 +139,17 @@ void WebUI::apiPresetsDeleteAll() {
 }
 
 void WebUI::apiConfigGet() {
-    nvs_handle_t nvs;
     StaticJsonDocument<512> doc;
-    char buf[256] = {};
-    size_t sz;
-
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs) == ESP_OK) {
-        sz = sizeof(buf); nvs_get_str(nvs, NVS_WIFI_SSID, buf, &sz);     doc["wifi_ssid"] = buf;
-        sz = sizeof(buf); nvs_get_str(nvs, NVS_MQTT_SERVER, buf, &sz);   doc["mqtt_server"] = buf;
-        uint16_t port = DEFAULT_MQTT_PORT; nvs_get_u16(nvs, NVS_MQTT_PORT, &port); doc["mqtt_port"] = port;
-        uint8_t en = 1; nvs_get_u8(nvs, NVS_MQTT_ENABLED, &en);          doc["mqtt_enabled"] = (bool)en;
-        float thr = DEFAULT_TUNE_THRESHOLD; sz = sizeof(thr);
-        nvs_get_blob(nvs, NVS_TUNE_THRESHOLD, &thr, &sz);                doc["tune_threshold"] = thr;
-        uint8_t tx = DEFAULT_TX_LEVEL; nvs_get_u8(nvs, NVS_TUNE_TX_LEVEL, &tx); doc["tune_tx_level"] = tx;
-        uint16_t cl = DEFAULT_COARSE_L; nvs_get_u16(nvs, NVS_COARSE_STEP_L, &cl); doc["coarse_step_l"] = cl;
-        uint16_t cc = DEFAULT_COARSE_C; nvs_get_u16(nvs, NVS_COARSE_STEP_C, &cc); doc["coarse_step_c"] = cc;
-        sz = sizeof(buf); buf[0] = 0;
-        nvs_get_str(nvs, NVS_OTA_MANIFEST_URL, buf, &sz);
-        doc["ota_manifest_url"] = strlen(buf) ? buf : OTA_MANIFEST_URL_DEFAULT;
-        uint8_t ll = 2; nvs_get_u8(nvs, NVS_LOG_LEVEL, &ll);            doc["log_level"] = ll;
-        nvs_close(nvs);
-    }
+    doc["wifi_ssid"]        = g_cfg.wifi_ssid;
+    doc["mqtt_server"]      = g_cfg.mqtt_server;
+    doc["mqtt_port"]        = g_cfg.mqtt_port;
+    doc["mqtt_enabled"]     = g_cfg.mqtt_enabled;
+    doc["tune_threshold"]   = g_cfg.tune_threshold;
+    doc["tune_tx_level"]    = g_cfg.tune_tx_level;
+    doc["coarse_step_l"]    = g_cfg.coarse_step_l;
+    doc["coarse_step_c"]    = g_cfg.coarse_step_c;
+    doc["ota_manifest_url"] = g_cfg.ota_manifest_url;
+    doc["log_level"]        = g_cfg.log_level;
     String out;
     serializeJson(doc, out);
     sendJSON(200, out);
@@ -171,29 +160,22 @@ void WebUI::apiConfigPost() {
     StaticJsonDocument<512> doc;
     if (deserializeJson(doc, s_server.arg("plain"))) { sendError(400, "JSON error"); return; }
 
-    nvs_handle_t nvs;
-    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs) != ESP_OK) { sendError(500, "NVS error"); return; }
-
-    if (doc.containsKey("wifi_ssid"))       nvs_set_str(nvs, NVS_WIFI_SSID,        doc["wifi_ssid"]);
-    if (doc.containsKey("wifi_pass"))       nvs_set_str(nvs, NVS_WIFI_PASS,        doc["wifi_pass"]);
-    if (doc.containsKey("mqtt_server"))     nvs_set_str(nvs, NVS_MQTT_SERVER,      doc["mqtt_server"]);
-    if (doc.containsKey("mqtt_port"))       nvs_set_u16(nvs, NVS_MQTT_PORT,        doc["mqtt_port"]);
-    if (doc.containsKey("mqtt_enabled"))    nvs_set_u8 (nvs, NVS_MQTT_ENABLED,     (uint8_t)(bool)doc["mqtt_enabled"]);
-    if (doc.containsKey("tune_threshold")) {
-        float v = doc["tune_threshold"];
-        nvs_set_blob(nvs, NVS_TUNE_THRESHOLD, &v, sizeof(v));
-    }
-    if (doc.containsKey("tune_tx_level"))   nvs_set_u8 (nvs, NVS_TUNE_TX_LEVEL,   doc["tune_tx_level"]);
-    if (doc.containsKey("coarse_step_l"))   nvs_set_u16(nvs, NVS_COARSE_STEP_L,   doc["coarse_step_l"]);
-    if (doc.containsKey("coarse_step_c"))   nvs_set_u16(nvs, NVS_COARSE_STEP_C,   doc["coarse_step_c"]);
-    if (doc.containsKey("ota_manifest_url"))nvs_set_str(nvs, NVS_OTA_MANIFEST_URL, doc["ota_manifest_url"]);
+    if (doc.containsKey("wifi_ssid"))       strlcpy(g_cfg.wifi_ssid,        doc["wifi_ssid"]        | "", sizeof(g_cfg.wifi_ssid));
+    if (doc.containsKey("wifi_pass"))       strlcpy(g_cfg.wifi_pass,        doc["wifi_pass"]        | "", sizeof(g_cfg.wifi_pass));
+    if (doc.containsKey("mqtt_server"))     strlcpy(g_cfg.mqtt_server,      doc["mqtt_server"]      | "", sizeof(g_cfg.mqtt_server));
+    if (doc.containsKey("mqtt_port"))       g_cfg.mqtt_port      = doc["mqtt_port"];
+    if (doc.containsKey("mqtt_enabled"))    g_cfg.mqtt_enabled   = doc["mqtt_enabled"];
+    if (doc.containsKey("tune_threshold"))  g_cfg.tune_threshold = doc["tune_threshold"];
+    if (doc.containsKey("tune_tx_level"))   g_cfg.tune_tx_level  = doc["tune_tx_level"];
+    if (doc.containsKey("coarse_step_l"))   g_cfg.coarse_step_l  = doc["coarse_step_l"];
+    if (doc.containsKey("coarse_step_c"))   g_cfg.coarse_step_c  = doc["coarse_step_c"];
+    if (doc.containsKey("ota_manifest_url"))strlcpy(g_cfg.ota_manifest_url, doc["ota_manifest_url"] | "", sizeof(g_cfg.ota_manifest_url));
     if (doc.containsKey("log_level")) {
-        uint8_t ll = doc["log_level"];
-        nvs_set_u8(nvs, NVS_LOG_LEVEL, ll);
-        Logger::setLevel((LogLevel)ll);
+        g_cfg.log_level = doc["log_level"];
+        Logger::setLevel((LogLevel)g_cfg.log_level);
     }
-    nvs_commit(nvs);
-    nvs_close(nvs);
+
+    Config::save();
     sendJSON(200, "{\"ok\":true,\"reboot\":false}");
 }
 
@@ -273,7 +255,7 @@ void WebUI::otaLocalFS() {
 
     if (up.status == UPLOAD_FILE_START) {
         LOG_INFO("OTA", "Local FS upload start");
-        started = Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS);
+        started = Update.begin(UPDATE_SIZE_UNKNOWN, U_LittleFS);
     } else if (up.status == UPLOAD_FILE_WRITE && started) {
         Update.write(up.buf, up.currentSize);
     } else if (up.status == UPLOAD_FILE_END && started) {
@@ -317,6 +299,14 @@ void WebUI::otaGitHubInstall() {
     OTAUpdater::installGitHub(manifest);   // reboots on success
 }
 
+// ── Reboot ────────────────────────────────────────────────────────────────────
+
+void WebUI::apiReboot() {
+    sendJSON(200, "{\"ok\":true}");
+    delay(300);
+    ESP.restart();
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 bool WebUI::begin() {
@@ -328,6 +318,7 @@ bool WebUI::begin() {
     s_server.on("/api/presets",      HTTP_DELETE, apiPresetsDeleteAll);
     s_server.on("/api/config",       HTTP_GET,    apiConfigGet);
     s_server.on("/api/config",       HTTP_POST,   apiConfigPost);
+    s_server.on("/api/reboot",       HTTP_POST,   apiReboot);
     s_server.on("/events",           HTTP_GET,    handleSSE);
     s_server.on("/ota/local/fw",     HTTP_POST,   [](){}, otaLocalFW);
     s_server.on("/ota/local/fs",     HTTP_POST,   [](){}, otaLocalFS);

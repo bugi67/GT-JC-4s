@@ -48,20 +48,6 @@ static const float C_PF[] = {
 #define FINE_WINDOW_SIZE        9       // ±4 steps around optimum
 #define FINE_MAX_ITER           5
 
-// ── NVS keys ─────────────────────────────────────────────────────────────────
-#define NVS_NAMESPACE          "gt-jc-4s"
-#define NVS_WIFI_SSID          "wifi_ssid"
-#define NVS_WIFI_PASS          "wifi_pass"
-#define NVS_MQTT_SERVER        "mqtt_server"
-#define NVS_MQTT_PORT          "mqtt_port"
-#define NVS_MQTT_ENABLED       "mqtt_en"
-#define NVS_TUNE_THRESHOLD     "tune_thr"
-#define NVS_TUNE_TX_LEVEL      "tune_tx"
-#define NVS_COARSE_STEP_L      "coarse_l"
-#define NVS_COARSE_STEP_C      "coarse_c"
-#define NVS_OTA_MANIFEST_URL   "ota_url"
-#define NVS_LOG_LEVEL          "log_level"
-
 // ── MQTT topics ───────────────────────────────────────────────────────────────
 #define MQTT_ROOT              "JC-4s"
 #define MQTT_SUB_L             MQTT_ROOT "/L"

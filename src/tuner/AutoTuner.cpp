@@ -2,13 +2,8 @@
 #include "I2CController.h"
 #include "PresetStore.h"
 #include "../config.h"
+#include "../cfg/AppConfig.h"
 #include "../logger/Logger.h"
-#include <nvs_flash.h>
-#include <nvs.h>
-
-float    AutoTuner::s_threshold = DEFAULT_TUNE_THRESHOLD;
-uint16_t AutoTuner::s_coarseL   = DEFAULT_COARSE_L;
-uint16_t AutoTuner::s_coarseC   = DEFAULT_COARSE_C;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -53,9 +48,9 @@ bool AutoTuner::presetSearch(uint16_t& L, uint16_t& C, uint8_t& mode) {
     vTaskDelay(pdMS_TO_TICKS(20));
 
     float rl = getRL();
-    LOG_INFO("AutoTuner", "Preset SWR: RL=%.1f dB (threshold=%.1f)", rl, s_threshold);
+    LOG_INFO("AutoTuner", "Preset SWR: RL=%.1f dB (threshold=%.1f)", rl, g_cfg.tune_threshold);
 
-    if (rl >= s_threshold) {
+    if (rl >= g_cfg.tune_threshold) {
         L = best.L; C = best.C; mode = best.mode;
         return true;
     }
@@ -70,14 +65,14 @@ void AutoTuner::coarseScan(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) 
     float bestRL = -999.0f;
     I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
 
-    uint16_t lSteps = (L_MAX / s_coarseL) + 1;
-    uint16_t cSteps = (C_MAX / s_coarseC) + 1;
+    uint16_t lSteps = (L_MAX / g_cfg.coarse_step_l) + 1;
+    uint16_t cSteps = (C_MAX / g_cfg.coarse_step_c) + 1;
     uint32_t totalSteps = (uint32_t)lSteps * cSteps * 3;
     uint32_t step = 0;
 
     for (uint8_t m = 1; m <= 3; m++) {
-        for (uint16_t c = 0; c <= C_MAX; c += s_coarseC) {
-            for (uint16_t l = 0; l <= L_MAX; l += s_coarseL) {
+        for (uint16_t c = 0; c <= C_MAX; c += g_cfg.coarse_step_c) {
+            for (uint16_t l = 0; l <= L_MAX; l += g_cfg.coarse_step_l) {
                 if (isAbortRequested()) {
                     LOG_INFO("AutoTuner", "Coarse scan aborted");
                     return;
@@ -145,17 +140,6 @@ void AutoTuner::fineTune(uint16_t& bestL, uint16_t& bestC, uint8_t mode) {
 // ── Main tune sequence ───────────────────────────────────────────────────────
 
 bool AutoTuner::runTune(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
-    // Load NVS config
-    nvs_handle_t nvs;
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs) == ESP_OK) {
-        float f; size_t sz = sizeof(f);
-        if (nvs_get_blob(nvs, NVS_TUNE_THRESHOLD, &f, &sz) == ESP_OK) s_threshold = f;
-        uint16_t v;
-        if (nvs_get_u16(nvs, NVS_COARSE_STEP_L, &v) == ESP_OK) s_coarseL = v;
-        if (nvs_get_u16(nvs, NVS_COARSE_STEP_C, &v) == ESP_OK) s_coarseC = v;
-        nvs_close(nvs);
-    }
-
     reportProgress(0);
 
     // Phase 1

@@ -23,6 +23,7 @@ private:
     static void apiPresetsDeleteAll();
     static void apiConfigGet();
     static void apiConfigPost();
+    static void apiReboot();
 
     // SSE
     static void handleSSE();
