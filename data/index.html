@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GT-JC-4s Antennenkoppler</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header>
+  <h1>GT-JC-4s</h1>
+  <span id="swr-badge">SWR —</span>
+  <span id="wifi-badge">—</span>
+</header>
+
+<nav>
+  <button data-tab="dashboard" class="active">Dashboard</button>
+  <button data-tab="presets">Presets</button>
+  <button data-tab="config">Konfiguration</button>
+  <button data-tab="maint">Wartung</button>
+</nav>
+
+<!-- ── Dashboard ─────────────────────────────────────────────────────────── -->
+<div id="tab-dashboard" class="tab active">
+
+  <div class="card">
+    <h2>Induktivität L</h2>
+    <div class="row">
+      <label>Wert</label>
+      <input type="range" id="slider-L" min="0" max="2047" value="0">
+      <span class="val" id="val-L">0</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Kapazität C</h2>
+    <div class="row">
+      <label>Wert</label>
+      <input type="range" id="slider-C" min="0" max="511" value="0">
+      <span class="val" id="val-C">0</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Tuner-Modus</h2>
+    <div class="mode-group">
+      <button class="mode-btn active" data-mode="1">C @ TRX</button>
+      <button class="mode-btn" data-mode="2">C @ ANT</button>
+      <button class="mode-btn" data-mode="3">Kein C</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>AutoTune</h2>
+    <div class="row">
+      <span style="color:var(--text2);font-size:.85rem">Frequenz:</span>
+      <span id="freq-display">—</span>
+    </div>
+    <div class="row">
+      <button class="btn btn-primary" id="btn-autotune">AutoTune starten</button>
+      <button class="btn btn-secondary" id="btn-abort" disabled>Abbrechen</button>
+    </div>
+    <div id="tune-progress-wrap" class="progress-wrap" style="display:none;margin-top:8px">
+      <div class="progress-bar" id="tune-progress-bar" style="width:0%"></div>
+    </div>
+    <div class="status-msg" id="tune-status"></div>
+  </div>
+
+</div>
+
+<!-- ── Presets ────────────────────────────────────────────────────────────── -->
+<div id="tab-presets" class="tab">
+
+  <div class="card">
+    <h2>Gespeicherte Presets</h2>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr><th>Frequenz</th><th>L</th><th>C</th><th>Modus</th><th></th></tr>
+        </thead>
+        <tbody id="presets-tbody">
+          <tr><td colspan="5" style="text-align:center;color:var(--text2)">Lade…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:12px">
+      <button class="btn btn-danger" id="btn-delete-all">Alle löschen</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Konfiguration ──────────────────────────────────────────────────────── -->
+<div id="tab-config" class="tab">
+
+  <div class="card">
+    <h2>WLAN</h2>
+    <div class="form-group">
+      <label>SSID</label>
+      <input type="text" id="cfg-wifi-ssid" placeholder="Netzwerk-Name">
+    </div>
+    <div class="form-group">
+      <label>Passwort</label>
+      <input type="password" id="cfg-wifi-pass" placeholder="(leer lassen = unverändert)">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>MQTT</h2>
+    <div class="form-group">
+      <label>Server</label>
+      <input type="text" id="cfg-mqtt-server" placeholder="192.168.1.x">
+    </div>
+    <div class="form-group">
+      <label>Port</label>
+      <input type="number" id="cfg-mqtt-port" value="1883" min="1" max="65535">
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="cfg-mqtt-en" checked> Aktiviert
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>AutoTuner</h2>
+    <div class="form-group">
+      <label>Return-Loss Schwellwert [dB]</label>
+      <input type="number" id="cfg-tune-thr" value="18" step="0.5" min="6" max="30">
+    </div>
+    <div class="form-group">
+      <label>Min. Vfwd (TX-Erkennung)</label>
+      <input type="number" id="cfg-tune-tx" value="10" min="1" max="255">
+    </div>
+    <div class="form-group">
+      <label>Coarse-Schritt L</label>
+      <input type="number" id="cfg-coarse-l" value="64" min="1" max="256">
+    </div>
+    <div class="form-group">
+      <label>Coarse-Schritt C</label>
+      <input type="number" id="cfg-coarse-c" value="16" min="1" max="128">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>OTA / Logging</h2>
+    <div class="form-group">
+      <label>Manifest-URL</label>
+      <input type="text" id="cfg-ota-url" placeholder="https://github.com/…/release.json">
+    </div>
+    <div class="form-group">
+      <label>Log-Level</label>
+      <select id="cfg-log-level">
+        <option value="0">ERROR</option>
+        <option value="1">WARN</option>
+        <option value="2" selected>INFO</option>
+        <option value="3">DEBUG</option>
+      </select>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" id="btn-save-config">Speichern</button>
+  <div class="status-msg" id="cfg-status"></div>
+
+</div>
+
+<!-- ── Wartung ────────────────────────────────────────────────────────────── -->
+<div id="tab-maint" class="tab">
+
+  <div class="card">
+    <h2>GitHub OTA</h2>
+    <div id="ota-info">–</div>
+    <div class="progress-wrap" style="margin:8px 0">
+      <div class="progress-bar" id="ota-progress-bar" style="width:0%"></div>
+    </div>
+    <div class="status-msg" id="ota-state-label"></div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn btn-secondary" id="btn-ota-check">Update prüfen</button>
+      <button class="btn btn-primary"   id="btn-ota-install" disabled>Installieren</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Lokaler Upload</h2>
+    <div class="form-group">
+      <label>Firmware (firmware.bin)</label>
+      <input type="file" id="fw-file" accept=".bin">
+    </div>
+    <button class="btn btn-secondary" id="btn-local-fw">FW hochladen</button>
+
+    <div class="form-group" style="margin-top:16px">
+      <label>Filesystem (spiffs.bin)</label>
+      <input type="file" id="fs-file" accept=".bin">
+    </div>
+    <button class="btn btn-secondary" id="btn-local-fs">FS hochladen</button>
+    <div class="status-msg" id="local-status"></div>
+  </div>
+
+  <div class="card">
+    <h2>System</h2>
+    <button class="btn btn-danger" id="btn-reboot">Neustart</button>
+    <div class="status-msg" id="maint-status"></div>
+  </div>
+
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

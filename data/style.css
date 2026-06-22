@@ -1,0 +1,81 @@
+:root {
+  --bg: #1a1a2e;
+  --bg2: #16213e;
+  --card: #0f3460;
+  --accent: #e94560;
+  --accent2: #533483;
+  --text: #eaeaea;
+  --text2: #a8b2d8;
+  --green: #4caf50;
+  --orange: #ff9800;
+  --red: #f44336;
+  --radius: 8px;
+  --shadow: 0 4px 16px rgba(0,0,0,.4);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+header { background: var(--bg2); padding: 12px 20px; display: flex; align-items: center; gap: 16px;
+         box-shadow: var(--shadow); position: sticky; top: 0; z-index: 100; }
+header h1 { font-size: 1.2rem; color: var(--accent); }
+#swr-badge { background: var(--card); padding: 4px 12px; border-radius: 20px; font-weight: bold;
+             font-size: 1.1rem; color: var(--green); transition: color .3s; }
+#swr-badge.warn { color: var(--orange); }
+#swr-badge.bad  { color: var(--red); }
+#wifi-badge { margin-left: auto; font-size: .8rem; color: var(--text2); }
+
+nav { display: flex; background: var(--bg2); border-bottom: 1px solid var(--card); overflow-x: auto; }
+nav button { flex: 1; min-width: 80px; padding: 12px 8px; border: none; background: none;
+             color: var(--text2); cursor: pointer; font-size: .85rem; transition: all .2s; border-bottom: 2px solid transparent; }
+nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+nav button:hover { color: var(--text); }
+
+.tab { display: none; padding: 16px; max-width: 800px; margin: 0 auto; }
+.tab.active { display: block; }
+
+.card { background: var(--card); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; box-shadow: var(--shadow); }
+.card h2 { font-size: .95rem; color: var(--text2); margin-bottom: 12px; text-transform: uppercase; letter-spacing: .05em; }
+
+.row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+label { font-size: .85rem; color: var(--text2); min-width: 60px; }
+input[type=range] { flex: 1; min-width: 120px; accent-color: var(--accent); }
+.val { font-size: 1rem; font-weight: bold; min-width: 50px; text-align: right; }
+
+.mode-group { display: flex; gap: 8px; flex-wrap: wrap; }
+.mode-btn { padding: 8px 14px; border: 2px solid var(--accent2); border-radius: var(--radius);
+            background: none; color: var(--text); cursor: pointer; transition: all .2s; font-size: .85rem; }
+.mode-btn.active { background: var(--accent2); }
+
+.btn { padding: 10px 20px; border: none; border-radius: var(--radius); cursor: pointer;
+       font-size: .9rem; font-weight: bold; transition: all .2s; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { filter: brightness(1.2); }
+.btn-danger { background: var(--red); color: #fff; }
+.btn-danger:hover { filter: brightness(1.2); }
+.btn-secondary { background: var(--accent2); color: #fff; }
+.btn-secondary:hover { filter: brightness(1.2); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.progress-wrap { background: rgba(255,255,255,.1); border-radius: 20px; height: 8px; overflow: hidden; }
+.progress-bar { height: 100%; background: var(--accent); border-radius: 20px; transition: width .3s; }
+
+table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+th { color: var(--text2); text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.1); }
+td { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.05); }
+tr:hover td { background: rgba(255,255,255,.04); }
+
+.form-group { margin-bottom: 12px; }
+.form-group label { display: block; font-size: .8rem; color: var(--text2); margin-bottom: 4px; }
+.form-group input, .form-group select { width: 100%; padding: 8px 10px; background: rgba(0,0,0,.3);
+  border: 1px solid rgba(255,255,255,.15); border-radius: var(--radius); color: var(--text); font-size: .9rem; }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
+
+.status-msg { font-size: .85rem; color: var(--text2); margin-top: 8px; }
+.status-msg.error { color: var(--red); }
+.status-msg.ok { color: var(--green); }
+
+#ota-info { background: rgba(0,0,0,.2); border-radius: var(--radius); padding: 12px; margin: 8px 0; font-size: .85rem; }
+
+@media (max-width: 480px) {
+  .row { flex-direction: column; align-items: flex-start; }
+  input[type=range] { width: 100%; }
+}

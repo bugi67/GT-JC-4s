@@ -1,0 +1,80 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build firmware
+        run: pio run
+
+      - name: Build filesystem (SPIFFS)
+        run: pio run --target buildfs
+
+      - name: Compute MD5 checksums
+        run: |
+          FW=.pio/build/seeed_xiao_esp32c3/firmware.bin
+          FS=.pio/build/seeed_xiao_esp32c3/spiffs.bin
+          md5sum "$FW" | awk '{print $1}' > firmware.bin.md5
+          md5sum "$FS" | awk '{print $1}' > spiffs.bin.md5
+          echo "FW_MD5=$(cat firmware.bin.md5)" >> "$GITHUB_ENV"
+          echo "FS_MD5=$(cat spiffs.bin.md5)"  >> "$GITHUB_ENV"
+          echo "FW_SIZE=$(stat -c%s "$FW")"    >> "$GITHUB_ENV"
+          echo "FS_SIZE=$(stat -c%s "$FS")"    >> "$GITHUB_ENV"
+
+      - name: Generate release.json
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          REPO="${{ github.repository }}"
+          TAG="${GITHUB_REF_NAME}"
+          BASE="https://github.com/${REPO}/releases/download/${TAG}"
+          CHANGELOG=$(git log -1 --pretty=%B | head -1)
+          cat > release.json <<EOF
+          {
+            "version": "${VERSION}",
+            "fw": {
+              "url": "${BASE}/firmware.bin",
+              "md5": "${FW_MD5}",
+              "size": ${FW_SIZE}
+            },
+            "fs": {
+              "url": "${BASE}/spiffs.bin",
+              "md5": "${FS_MD5}",
+              "size": ${FS_SIZE}
+            },
+            "changelog": "${CHANGELOG}"
+          }
+          EOF
+          cat release.json
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            .pio/build/seeed_xiao_esp32c3/firmware.bin
+            .pio/build/seeed_xiao_esp32c3/spiffs.bin
+            firmware.bin.md5
+            spiffs.bin.md5
+            release.json
+          generate_release_notes: false
+          body_path: /dev/null
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
