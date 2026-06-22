@@ -90,7 +90,7 @@ static const float C_PF[] = {
 
 // ── OTA ───────────────────────────────────────────────────────────────────────
 #define OTA_MANIFEST_URL_DEFAULT \
-    "https://github.com/hb9czf/gt-jc-4s/releases/latest/download/release.json"
+    "https://github.com/bugi67/GT-JC-4s/releases/latest/download/release.json"
 #define OTA_TIMEOUT_MS         60000
 #define OTA_BUF_SIZE           1024
 
