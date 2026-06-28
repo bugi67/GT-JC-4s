@@ -1,0 +1,14 @@
+{
+  "wifi_ssid": "",
+  "wifi_pass": "",
+  "mqtt_server": "192.168.0.172",
+  "mqtt_port": 1883,
+  "mqtt_enabled": true,
+  "tune_threshold": 18.0,
+  "tune_tx_level": 3,
+  "coarse_step_l": 64,
+  "coarse_step_c": 16,
+  "ota_manifest_url": "https://github.com/bugi67/GT-JC-4s/releases/latest/download/release.json",
+  "log_level": 2,
+  "ntp_server": "ntp.metas.ch"
+}

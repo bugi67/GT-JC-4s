@@ -29,7 +29,8 @@ public:
     static bool deleteAll();
 
 private:
-    static int  s_count;
+    static int    s_count;
+    static Preset s_presets[PRESET_MAX_COUNT];   // in-RAM cache; read/findBest need no Wire
     static bool eepromRead(uint8_t addr, uint8_t reg, uint8_t* buf, uint8_t len);
     static bool eepromWrite(uint8_t addr, uint8_t reg, const uint8_t* buf, uint8_t len);
     static void packPreset(const Preset& p, uint8_t* buf);

@@ -4,7 +4,234 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GT-JC-4s</title>
-<link rel="stylesheet" href="/style.css">
+<style>
+/* ── Theme: Dark ─────────────────────────────────────────────────────────── */
+:root[data-theme="dark"] {
+  --shell-bg:    #0f0f17;
+  --sidebar-bg:  #13131c;
+  --card-bg:     #1a1a26;
+  --sp-bg:       #13131c;
+  --border:      #24243a;
+  --hover:       rgba(255,255,255,.05);
+  --active-bg:   rgba(77,184,255,.09);
+  --accent:      #4db8ff;
+  --accent-dim:  rgba(77,184,255,.18);
+  --seg-bg:      #22223a;
+  --input-bg:    #0f0f17;
+  --swr-good:    #4ccd87;
+  --swr-warn:    #ffaa00;
+  --swr-bad:     #ff5252;
+  --danger:      #e53935;
+  --text:        #dcdcf0;
+  --text2:       #60608a;
+  --text3:       #9090b8;
+}
+
+/* ── Theme: Light ────────────────────────────────────────────────────────── */
+:root[data-theme="light"] {
+  --shell-bg:    #f2f2f8;
+  --sidebar-bg:  #ffffff;
+  --card-bg:     #ffffff;
+  --sp-bg:       #ffffff;
+  --border:      #e0e0ee;
+  --hover:       rgba(0,0,0,.04);
+  --active-bg:   rgba(9,105,218,.07);
+  --accent:      #0969da;
+  --accent-dim:  rgba(9,105,218,.12);
+  --seg-bg:      #eaeaf4;
+  --input-bg:    #f6f6fc;
+  --swr-good:    #1e7e4a;
+  --swr-warn:    #c05c00;
+  --swr-bad:     #c62828;
+  --danger:      #c62828;
+  --text:        #1a1a2e;
+  --text2:       #7070a0;
+  --text3:       #4a4a70;
+}
+
+/* ── Reset ───────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--shell-bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+/* ── Shell grid ──────────────────────────────────────────────────────────── */
+.shell { display: grid; grid-template-columns: 72px 1fr 264px; height: 100vh; }
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+.sidebar {
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 0 0 12px; overflow-y: auto; height: 100vh;
+}
+.brand {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; padding: 20px 0 16px; width: 100%;
+  border-bottom: 1px solid var(--border); margin-bottom: 8px; gap: 1px;
+}
+.brand-main { font-size: 1.1rem; font-weight: 800; color: var(--text); letter-spacing: -.01em; line-height: 1; }
+.brand-sub  { font-size: .6rem; font-weight: 600; color: var(--text2); letter-spacing: .06em; text-transform: uppercase; }
+.sidenav { width: 100%; display: flex; flex-direction: column; gap: 2px; padding: 4px 0; }
+.snav-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 5px; width: 100%; padding: 12px 4px 10px;
+  background: none; border: none; border-left: 3px solid transparent;
+  color: var(--text2); cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s; position: relative;
+}
+.snav-btn:hover { background: var(--hover); color: var(--text3); }
+.snav-btn.active { border-left-color: var(--accent); background: var(--active-bg); color: var(--accent); }
+.snav-icon { width: 20px; height: 20px; flex-shrink: 0; }
+.snav-btn span { font-size: .58rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; text-align: center; line-height: 1; }
+.sidebar-foot { margin-top: auto; padding-top: 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.sfoot-btn {
+  background: var(--hover); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text2); cursor: pointer; width: 40px; height: 30px;
+  font-size: .72rem; display: flex; align-items: center; justify-content: center;
+  transition: color .15s, border-color .15s;
+}
+.sfoot-btn:hover { color: var(--text); border-color: var(--accent); }
+
+/* ── Main content ────────────────────────────────────────────────────────── */
+.main {
+  background: var(--shell-bg); overflow-y: auto; height: 100vh;
+  padding: 24px 20px; display: flex; flex-direction: column; gap: 0;
+}
+.page { display: none; }
+.page.active { display: block; }
+.page-hdr { margin-bottom: 20px; }
+.page-title { font-size: 1.3rem; font-weight: 700; color: var(--text); letter-spacing: -.02em; }
+
+/* ── Cards ───────────────────────────────────────────────────────────────── */
+.card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; }
+.card-lbl { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text2); margin-bottom: 16px; }
+.card-foot { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+
+/* ── Sliders ─────────────────────────────────────────────────────────────── */
+.slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.sl-lbl { font-size: .82rem; font-weight: 700; width: 18px; text-align: center; flex-shrink: 0; color: var(--text3); }
+.slider-row input[type=range] { flex: 1; height: 5px; cursor: pointer; accent-color: var(--accent); }
+.num-in {
+  width: 64px; padding: 6px 8px; background: var(--input-bg);
+  border: 1px solid var(--border); border-radius: 7px;
+  color: var(--text); font-size: .86rem; text-align: right; appearance: textfield;
+}
+.num-in:focus { outline: none; border-color: var(--accent); }
+.num-in::-webkit-inner-spin-button { opacity: .5; }
+
+/* ── Mode segmented control ──────────────────────────────────────────────── */
+.mode-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.seg { display: flex; background: var(--seg-bg); border-radius: 8px; padding: 3px; gap: 2px; }
+.seg-btn { padding: 6px 14px; border: none; border-radius: 6px; background: none; color: var(--text2); cursor: pointer; font-size: .8rem; transition: background .15s, color .15s; }
+.seg-btn.active { background: var(--card-bg); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+.seg-btn:not(.active):hover { color: var(--text); }
+
+/* ── Progress ────────────────────────────────────────────────────────────── */
+.prog-wrap { background: var(--seg-bg); border-radius: 20px; height: 5px; overflow: hidden; margin-top: 12px; }
+.prog-bar { height: 100%; width: 0%; background: var(--accent); border-radius: 20px; transition: width .35s; }
+
+/* ── Status line ─────────────────────────────────────────────────────────── */
+.status-line { font-size: .78rem; color: var(--text2); margin-top: 8px; min-height: 1em; }
+.status-line.ok    { color: var(--swr-good); }
+.status-line.error { color: var(--swr-bad); }
+.status-line.warn  { color: var(--swr-warn); }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.btn { display: inline-flex; align-items: center; padding: 8px 18px; border: none; border-radius: 8px; cursor: pointer; font-size: .84rem; font-weight: 600; transition: filter .15s, opacity .15s, border-color .15s; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { filter: brightness(1.1); }
+.btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text3); }
+.btn-ghost:hover { border-color: var(--accent); color: var(--text); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { filter: brightness(1.1); }
+.btn:disabled { opacity: .35; cursor: not-allowed; filter: none; }
+.row-gap { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* ── Form ────────────────────────────────────────────────────────────────── */
+.form-group { margin-bottom: 13px; }
+.form-group label { display: block; font-size: .75rem; color: var(--text2); margin-bottom: 5px; }
+.form-group input:not([type=checkbox]):not([type=file]),
+.form-group select {
+  width: 100%; padding: 8px 10px; background: var(--input-bg);
+  border: 1px solid var(--border); border-radius: 7px;
+  color: var(--text); font-size: .86rem;
+}
+.form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
+.form-group input[type=file] { color: var(--text2); font-size: .8rem; }
+.form-group select { cursor: pointer; }
+.form-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding-top: 4px; font-size: .82rem; color: var(--text3); }
+.toggle { position: relative; width: 40px; height: 22px; cursor: pointer; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.tog-track { position: absolute; inset: 0; border-radius: 22px; background: var(--seg-bg); border: 1px solid var(--border); transition: background .2s, border-color .2s; }
+.tog-track::after { content: ''; position: absolute; left: 3px; top: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--text2); transition: transform .2s, background .2s; }
+.toggle input:checked + .tog-track { background: var(--accent); border-color: var(--accent); }
+.toggle input:checked + .tog-track::after { transform: translateX(18px); background: #fff; }
+
+/* ── Table ───────────────────────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+th { color: var(--text2); text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--hover); }
+.empty-cell { text-align: center; color: var(--text2); padding: 24px; }
+
+/* ── OTA box ─────────────────────────────────────────────────────────────── */
+.ota-box { background: var(--seg-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; font-size: .82rem; line-height: 1.55; color: var(--text3); }
+
+/* ── Local upload ────────────────────────────────────────────────────────── */
+.upload-row { display: flex; align-items: flex-end; gap: 12px; }
+.upload-row .form-group { flex: 1; margin-bottom: 0; }
+
+/* ── Stats panel ─────────────────────────────────────────────────────────── */
+.statspanel { background: var(--sp-bg); border-left: 1px solid var(--border); padding: 20px 16px; overflow-y: auto; height: 100vh; display: flex; flex-direction: column; gap: 0; }
+.sp-hdr { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--text2); margin-bottom: 18px; }
+.sp-hero { text-align: center; padding: 8px 0 16px; }
+.sp-hero-num { font-size: 3rem; font-weight: 700; line-height: 1; color: var(--swr-good); transition: color .3s; }
+.sp-hero-num.warn { color: var(--swr-warn); }
+.sp-hero-num.bad  { color: var(--swr-bad); }
+.sp-hero-lbl { font-size: .68rem; color: var(--text2); text-transform: uppercase; letter-spacing: .08em; margin-top: 4px; }
+.sp-grid { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 4px; }
+.sp-cell { padding: 11px 10px; text-align: center; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.sp-cell:nth-child(2n)  { border-right: none; }
+.sp-cell:nth-child(n+3) { border-bottom: none; }
+.sp-cell-num { font-size: 1.15rem; font-weight: 700; color: var(--accent); line-height: 1.1; }
+.sp-cell-lbl { font-size: .62rem; color: var(--text2); margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+.sp-hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+.sp-section-lbl { font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text2); margin-bottom: 8px; }
+.sp-status-row { display: flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--text3); margin-bottom: 4px; }
+.sp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text2); flex-shrink: 0; transition: background .3s; }
+.sp-dot.running { background: var(--accent); }
+.sp-dot.done    { background: var(--swr-good); }
+.sp-dot.error   { background: var(--swr-bad); }
+.sp-meta { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 7px; }
+.sp-meta-row { display: flex; justify-content: space-between; font-size: .75rem; }
+.sp-meta-lbl { color: var(--text2); }
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 72px 1fr; }
+  .statspanel { display: none; }
+}
+@media (max-width: 560px) {
+  .shell { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+  .sidebar { height: auto; width: 100%; flex-direction: row; border-right: none; border-top: 1px solid var(--border); padding: 0; grid-row: 2; position: sticky; bottom: 0; top: auto; }
+  .brand, .sidebar-foot { display: none; }
+  .sidenav { flex-direction: row; gap: 0; }
+  .snav-btn { flex: 1; border-left: none; border-top: 3px solid transparent; padding: 8px 4px; }
+  .snav-btn.active { border-top-color: var(--accent); border-left: none; }
+  .main { grid-row: 1; height: calc(100vh - 60px); }
+  .form-2col { grid-template-columns: 1fr; }
+  .upload-row { flex-direction: column; align-items: stretch; }
+  .upload-row .btn { align-self: flex-start; }
+}
+</style>
 </head>
 <body>
 <div class="shell">
@@ -91,13 +318,21 @@
     <div class="card">
       <div class="card-lbl">AutoTune</div>
       <div class="row-gap">
-        <button class="btn btn-primary" id="btn-autotune" data-i18n="btn_autotune">Start AutoTune</button>
+        <button class="btn btn-primary" id="btn-autotune"  data-i18n="btn_autotune">Start AutoTune</button>
+        <button class="btn btn-ghost"   id="btn-finetune" data-i18n="btn_finetune">Fine Tune</button>
         <button class="btn btn-ghost"   id="btn-abort"    data-i18n="btn_abort" disabled>Abort</button>
       </div>
       <div class="prog-wrap" id="tune-prog-wrap" style="display:none">
         <div class="prog-bar" id="tune-prog-bar"></div>
       </div>
       <div class="status-line" id="tune-status"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-lbl">K-Tune</div>
+      <div class="row-gap">
+        <button class="btn btn-ghost" id="btn-ktune">K-Tune</button>
+      </div>
     </div>
   </div>
 
@@ -200,6 +435,10 @@
           <option value="2">INFO</option>
           <option value="3">DEBUG</option>
         </select>
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_ntp_server">NTP Server</label>
+        <input type="text" id="cfg-ntp-server">
       </div>
     </div>
     <div class="row-gap" style="margin-top:4px">
@@ -311,10 +550,453 @@
       <span class="sp-meta-lbl">RSSI</span>
       <span id="sp-rssi">—</span>
     </div>
+    <div class="sp-meta-row">
+      <span class="sp-meta-lbl" data-i18n="lbl_time">Time</span>
+      <span id="sp-time">—</span>
+    </div>
   </div>
 </aside>
 
 </div><!-- .shell -->
-<script src="/app.js"></script>
+
+<script>
+'use strict';
+
+const $ = id => document.getElementById(id);
+
+// ── i18n ──────────────────────────────────────────────────────────────────────
+const STR = {
+  en: {
+    nav_dashboard: 'Dashboard', nav_presets: 'Presets',
+    nav_settings: 'Settings',   nav_maint: 'Maintenance',
+    title_tuner: 'Tuner Controls', lbl_mode: 'Mode', mode_noc: 'No C',
+    btn_autotune: 'Start AutoTune', btn_finetune: 'Fine Tune', btn_abort: 'Abort',
+    tune_states: ['Idle', 'Tuning…', 'Done', 'Aborted'],
+    title_presets: 'Saved Presets', th_freq: 'Frequency', th_mode: 'Mode',
+    lbl_loading: 'Loading…',     no_presets: 'No presets saved',
+    btn_delete_all: 'Delete all', btn_del: 'Delete',
+    confirm_del_preset: 'Delete preset for {0} kHz?',
+    confirm_del_all:    'Delete all presets?',
+    lbl_ssid: 'SSID', lbl_pass: 'Password',
+    ph_pass: '(leave empty to keep current)', ph_ssid: 'Network name',
+    ph_mqtt: '192.168.1.x', ph_url: 'https://github.com/…/release.json',
+    lbl_mqtt_srv: 'Server', lbl_mqtt_port: 'Port', lbl_mqtt_en: 'Enabled',
+    lbl_threshold: 'Return Loss threshold [dB]', lbl_tx_level: 'Min Vfwd (TX detect)',
+    lbl_coarse_l: 'Coarse step L', lbl_coarse_c: 'Coarse step C',
+    lbl_ota_url: 'Manifest URL', lbl_log_level: 'Log level',
+    btn_save: 'Save', cfg_ok: 'Saved.', cfg_err: 'Error saving!',
+    title_github_ota: 'GitHub OTA', btn_check: 'Check for update',
+    btn_install: 'Install', ota_checking: 'Checking GitHub…',
+    ota_uptodate: 'Firmware is up to date.', ota_available: 'Update available',
+    ota_states: ['Idle', 'Checking', 'Downloading FW…', 'Downloading FS…', 'Done', 'Error'],
+    confirm_install: 'Install update v{0}?',
+    title_local_ota: 'Local Upload',
+    lbl_fw_file: 'Firmware (firmware.bin)',    btn_upload_fw: 'Upload FW',
+    lbl_fs_file: 'Filesystem (littlefs.bin)',  btn_upload_fs: 'Upload FS',
+    uploading: 'Uploading…',
+    upload_fs_note: 'Uploading filesystem… (reboot follows)',
+    fw_ok: 'Firmware uploaded – upload filesystem too.',
+    fw_err: 'Firmware upload failed!', fs_err: 'Filesystem upload failed!',
+    title_system: 'System', btn_reboot: 'Reboot',
+    confirm_reboot: 'Reboot the device?', rebooting: 'Rebooting…',
+    sp_header: 'Tuner Stats', lbl_swr: 'SWR', lbl_freq_kHz: 'Freq (kHz)',
+    sp_tune_status: 'Tune Status', sp_ota: 'OTA',
+    tune_idle: 'Idle', lbl_fw: 'Firmware', lbl_time: 'Time',
+    lbl_ntp_server: 'NTP Server',
+  },
+  de: {
+    nav_dashboard: 'Dashboard', nav_presets: 'Presets',
+    nav_settings: 'Einstellungen', nav_maint: 'Wartung',
+    title_tuner: 'Tuner-Steuerung', lbl_mode: 'Modus', mode_noc: 'Kein C',
+    btn_autotune: 'AutoTune starten', btn_finetune: 'Feinabstimmung', btn_abort: 'Abbrechen',
+    tune_states: ['Bereit', 'Abstimmen…', 'Fertig', 'Abgebrochen'],
+    title_presets: 'Gespeicherte Presets', th_freq: 'Frequenz', th_mode: 'Modus',
+    lbl_loading: 'Lade…',           no_presets: 'Keine Presets gespeichert',
+    btn_delete_all: 'Alle löschen',  btn_del: 'Löschen',
+    confirm_del_preset: 'Preset für {0} kHz löschen?',
+    confirm_del_all:    'Alle Presets löschen?',
+    lbl_ssid: 'SSID', lbl_pass: 'Passwort',
+    ph_pass: '(leer = unverändert)', ph_ssid: 'Netzwerk-Name',
+    ph_mqtt: '192.168.1.x', ph_url: 'https://github.com/…/release.json',
+    lbl_mqtt_srv: 'Server', lbl_mqtt_port: 'Port', lbl_mqtt_en: 'Aktiviert',
+    lbl_threshold: 'Rückflussdämpfung Schwellwert [dB]', lbl_tx_level: 'Min. Vfwd (TX-Erkennung)',
+    lbl_coarse_l: 'Grobschritt L', lbl_coarse_c: 'Grobschritt C',
+    lbl_ota_url: 'Manifest-URL', lbl_log_level: 'Log-Level',
+    btn_save: 'Speichern', cfg_ok: 'Gespeichert.', cfg_err: 'Fehler!',
+    title_github_ota: 'GitHub OTA', btn_check: 'Update prüfen',
+    btn_install: 'Installieren', ota_checking: 'Prüfe GitHub…',
+    ota_uptodate: 'Firmware ist aktuell.', ota_available: 'Update verfügbar',
+    ota_states: ['Bereit', 'Prüfen', 'FW laden…', 'FS laden…', 'Fertig', 'Fehler'],
+    confirm_install: 'Update v{0} installieren?',
+    title_local_ota: 'Lokaler Upload',
+    lbl_fw_file: 'Firmware (firmware.bin)',     btn_upload_fw: 'FW hochladen',
+    lbl_fs_file: 'Dateisystem (littlefs.bin)',  btn_upload_fs: 'FS hochladen',
+    uploading: 'Lade hoch…',
+    upload_fs_note: 'Lade Dateisystem hoch… (Neustart folgt)',
+    fw_ok: 'Firmware hochgeladen – Dateisystem hochladen.',
+    fw_err: 'Firmware-Upload fehlgeschlagen!', fs_err: 'Dateisystem-Upload fehlgeschlagen!',
+    title_system: 'System', btn_reboot: 'Neustart',
+    confirm_reboot: 'Gerät neu starten?', rebooting: 'Starte neu…',
+    sp_header: 'Tuner-Status', lbl_swr: 'SWR', lbl_freq_kHz: 'Frequenz (kHz)',
+    sp_tune_status: 'Abstimmung', sp_ota: 'OTA',
+    tune_idle: 'Bereit', lbl_fw: 'Firmware', lbl_time: 'Uhrzeit',
+    lbl_ntp_server: 'NTP-Server',
+  }
+};
+
+let lang = localStorage.getItem('lang') || 'en';
+
+function t(key, ...args) {
+  let s = (STR[lang][key] ?? STR.en[key]) ?? key;
+  args.forEach((a, i) => { s = s.replace('{' + i + '}', a); });
+  return s;
+}
+
+function applyI18n() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  const ph = {
+    'cfg-wifi-ssid': 'ph_ssid', 'cfg-wifi-pass': 'ph_pass',
+    'cfg-mqtt-server': 'ph_mqtt', 'cfg-ota-url': 'ph_url',
+  };
+  Object.entries(ph).forEach(([id, key]) => {
+    const el = $(id);
+    if (el) el.placeholder = t(key);
+  });
+  $('btn-lang').textContent = lang === 'en' ? 'DE' : 'EN';
+  syncStats();
+}
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+let theme = localStorage.getItem('theme') || 'dark';
+function applyTheme() {
+  document.documentElement.dataset.theme = theme;
+  $('btn-theme').textContent = theme === 'dark' ? '☀️' : '🌙';
+}
+
+$('btn-theme').addEventListener('click', () => {
+  theme = theme === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('theme', theme);
+  applyTheme();
+});
+$('btn-lang').addEventListener('click', () => {
+  lang = lang === 'en' ? 'de' : 'en';
+  localStorage.setItem('lang', lang);
+  applyI18n();
+});
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const state = {
+  L: 0, C: 0, mode: 1, kTune: false, freq_kHz: 0,
+  swr: 0, returnLoss: 0,
+  tuneState: 0, tuneProgress: 0,
+  otaState: 0,  otaProgress: 0,
+  rssi: 0, fwVersion: '?',
+  ntpSynced: false, localTime: ''
+};
+let prevTuneState = -1;
+let activePage = 'dashboard';
+
+const post = (url, body) => fetch(url, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body)
+});
+const del = url => fetch(url, { method: 'DELETE' });
+
+// ── Page navigation ───────────────────────────────────────────────────────────
+function showPage(name) {
+  activePage = name;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.snav-btn').forEach(b => b.classList.remove('active'));
+  $('page-' + name).classList.add('active');
+  document.querySelector(`.snav-btn[data-page="${name}"]`).classList.add('active');
+  if (name === 'presets')  loadPresets();
+  if (name === 'settings') loadConfig();
+}
+
+document.querySelectorAll('.snav-btn[data-page]').forEach(b => {
+  b.addEventListener('click', () => showPage(b.dataset.page));
+});
+
+// ── SWR helpers ───────────────────────────────────────────────────────────────
+function swrCls(swr) {
+  if (swr <= 0)  return '';
+  if (swr < 1.5) return '';
+  if (swr < 2.5) return 'warn';
+  return 'bad';
+}
+
+// ── Stats panel ───────────────────────────────────────────────────────────────
+function syncStats() {
+  const heroEl = $('sp-swr');
+  const cls = swrCls(state.swr);
+  heroEl.textContent = state.swr > 0 ? state.swr.toFixed(2) : '—';
+  heroEl.className = 'sp-hero-num' + (cls ? ' ' + cls : '');
+
+  $('sp-rl').textContent   = state.returnLoss > 0 ? state.returnLoss.toFixed(1) : '—';
+  $('sp-freq').textContent = state.freq_kHz || '—';
+  $('sp-l').textContent    = state.L;
+  $('sp-c').textContent    = state.C;
+  $('sp-fw').textContent   = state.fwVersion ? 'v' + state.fwVersion : '—';
+  $('sp-rssi').textContent = state.rssi ? state.rssi + ' dBm' : '—';
+  $('sp-time').textContent = state.ntpSynced && state.localTime ? state.localTime : '—';
+
+  const tuning = state.tuneState === 1;
+  const labels = t('tune_states');
+  $('sp-tune-lbl').textContent = Array.isArray(labels) ? (labels[state.tuneState] || '') : '';
+  const dot = $('sp-tune-dot');
+  dot.className = 'sp-dot' + (tuning ? ' running' : state.tuneState === 2 ? ' done' : '');
+  $('sp-tune-wrap').style.display = tuning ? 'block' : 'none';
+  if (tuning) $('sp-tune-bar').style.width = state.tuneProgress + '%';
+
+  const otaLabels = t('ota_states');
+  $('sp-ota-lbl').textContent = Array.isArray(otaLabels) ? (otaLabels[state.otaState] || '') : '';
+  const otaDot = $('sp-ota-dot');
+  otaDot.className = 'sp-dot' +
+    (state.otaState === 1 || state.otaState === 2 || state.otaState === 3 ? ' running' :
+     state.otaState === 4 ? ' done' :
+     state.otaState === 5 ? ' error' : '');
+  $('sp-ota-wrap').style.display = (state.otaState > 0 && state.otaState < 4) ? 'block' : 'none';
+  if (state.otaProgress) $('sp-ota-bar').style.width = state.otaProgress + '%';
+}
+
+// ── Dashboard sync ────────────────────────────────────────────────────────────
+function syncDashboard() {
+  $('slider-L').value = state.L;  $('num-L').value = state.L;
+  $('slider-C').value = state.C;  $('num-C').value = state.C;
+
+  document.querySelectorAll('.seg-btn').forEach(b => {
+    b.classList.toggle('active', +b.dataset.mode === state.mode);
+  });
+
+  const tuning = state.tuneState === 1;
+  $('btn-autotune').disabled        = tuning;
+  $('btn-finetune').disabled        = tuning;
+  $('btn-abort').disabled           = !tuning;
+  $('tune-prog-wrap').style.display = tuning ? 'block' : 'none';
+  if (tuning) $('tune-prog-bar').style.width = state.tuneProgress + '%';
+  const ls = t('tune_states');
+  $('tune-status').textContent = Array.isArray(ls) ? (ls[state.tuneState] || '') : '';
+
+  const ktuneOn = !!state.kTune;
+  $('btn-ktune').classList.toggle('btn-primary', ktuneOn);
+  $('btn-ktune').classList.toggle('btn-ghost',  !ktuneOn);
+
+  // Auto-refresh preset list when a tune completes.
+  // Delay 500 ms: tuneState=DONE is set before the SAVE_PRESET EEPROM write
+  // finishes (~30 ms for 6 bytes), so an immediate fetch would see stale count.
+  if (prevTuneState === 1 && state.tuneState === 2 && activePage === 'presets') {
+    setTimeout(loadPresets, 500);
+  }
+  prevTuneState = state.tuneState;
+
+  syncStats();
+}
+
+function bindSlider(id) {
+  const slider = $('slider-' + id);
+  const num    = $('num-' + id);
+  const send   = v => { state[id] = v; slider.value = v; num.value = v;
+    post('/api/tune', { L: state.L, C: state.C, mode: state.mode }); };
+  slider.addEventListener('input',  () => { num.value = slider.value; });
+  slider.addEventListener('change', () => send(+slider.value));
+  num.addEventListener('change', () => {
+    const v = Math.max(+num.min, Math.min(+num.max, parseInt(num.value) || 0));
+    send(v);
+  });
+}
+bindSlider('L');
+bindSlider('C');
+
+document.querySelectorAll('.seg-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    state.mode = +b.dataset.mode;
+    document.querySelectorAll('.seg-btn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    post('/api/tune', { L: state.L, C: state.C, mode: state.mode });
+  });
+});
+
+$('btn-autotune').addEventListener('click',  () => post('/api/autotune',  { start: true }));
+$('btn-finetune').addEventListener('click',  () => post('/api/finetune',  { start: true }));
+$('btn-abort').addEventListener('click',     () => post('/api/autotune',  { start: false }));
+
+$('btn-ktune').addEventListener('click', () => {
+  const next = !state.kTune;
+  state.kTune = next;
+  $('btn-ktune').classList.toggle('btn-primary', next);
+  $('btn-ktune').classList.toggle('btn-ghost',  !next);
+  post('/api/ktune', { ktune: next });
+});
+
+// ── SSE ───────────────────────────────────────────────────────────────────────
+function startSSE() {
+  const src = new EventSource('/events');
+  src.onmessage = e => { Object.assign(state, JSON.parse(e.data)); syncDashboard(); };
+  src.onerror   = () => setTimeout(startSSE, 2000);
+}
+
+// ── Status poll ───────────────────────────────────────────────────────────────
+async function fetchStatus() {
+  try {
+    const d = await fetch('/api/status').then(r => r.json());
+    Object.assign(state, d);
+    syncDashboard();
+  } catch(e) { /* SSE keeps UI fresh */ }
+}
+
+// ── Presets ───────────────────────────────────────────────────────────────────
+const MODE_NAMES = { 1: 'C@TRX', 2: 'C@ANT', 3: '—' };
+
+async function loadPresets() {
+  try {
+    const rows = await fetch('/api/presets').then(r => r.json());
+    const tbody = $('presets-tbody');
+    tbody.innerHTML = '';
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">${t('no_presets')}</td></tr>`;
+      return;
+    }
+    rows.forEach(p => {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td>${p.freq_kHz} kHz</td><td>${p.L}</td><td>${p.C}</td>` +
+        `<td>${MODE_NAMES[p.mode] ?? p.mode}</td>` +
+        `<td><button class="btn btn-danger" style="padding:3px 10px;font-size:.74rem"` +
+        ` onclick="deletePreset(${p.freq_kHz})">${t('btn_del')}</button></td>`;
+      tbody.appendChild(tr);
+    });
+  } catch(e) {
+    $('presets-tbody').innerHTML = `<tr><td colspan="5" class="empty-cell">Error</td></tr>`;
+  }
+}
+
+window.deletePreset = async freq => {
+  if (!confirm(t('confirm_del_preset', freq))) return;
+  await del('/api/presets/' + freq);
+  loadPresets();
+};
+
+$('btn-delete-all').addEventListener('click', async () => {
+  if (!confirm(t('confirm_del_all'))) return;
+  await del('/api/presets');
+  loadPresets();
+});
+
+// ── Config ────────────────────────────────────────────────────────────────────
+async function loadConfig() {
+  try {
+    const c = await fetch('/api/config').then(r => r.json());
+    $('cfg-wifi-ssid').value   = c.wifi_ssid        ?? '';
+    $('cfg-mqtt-server').value = c.mqtt_server       ?? '';
+    $('cfg-mqtt-port').value   = c.mqtt_port         ?? 1883;
+    $('cfg-mqtt-en').checked   = c.mqtt_enabled      !== false;
+    $('cfg-tune-thr').value    = c.tune_threshold    ?? 18;
+    $('cfg-tune-tx').value     = c.tune_tx_level     ?? 10;
+    $('cfg-coarse-l').value    = c.coarse_step_l     ?? 64;
+    $('cfg-coarse-c').value    = c.coarse_step_c     ?? 16;
+    $('cfg-ota-url').value     = c.ota_manifest_url  ?? '';
+    $('cfg-log-level').value   = c.log_level         ?? 2;
+    $('cfg-ntp-server').value  = c.ntp_server        ?? 'ntp.metas.ch';
+  } catch(e) { /* ignore */ }
+}
+
+$('btn-save-cfg').addEventListener('click', async () => {
+  const st   = $('cfg-status');
+  const body = {
+    wifi_ssid:        $('cfg-wifi-ssid').value,
+    mqtt_server:      $('cfg-mqtt-server').value,
+    mqtt_port:        +$('cfg-mqtt-port').value,
+    mqtt_enabled:     $('cfg-mqtt-en').checked,
+    tune_threshold:   +$('cfg-tune-thr').value,
+    tune_tx_level:    +$('cfg-tune-tx').value,
+    coarse_step_l:    +$('cfg-coarse-l').value,
+    coarse_step_c:    +$('cfg-coarse-c').value,
+    ota_manifest_url: $('cfg-ota-url').value,
+    log_level:        +$('cfg-log-level').value,
+    ntp_server:       $('cfg-ntp-server').value,
+  };
+  const pass = $('cfg-wifi-pass').value;
+  if (pass) body.wifi_pass = pass;
+  try {
+    const d = await post('/api/config', body).then(r => r.json());
+    st.textContent = t(d.ok ? 'cfg_ok' : 'cfg_err');
+    st.className   = 'status-line ' + (d.ok ? 'ok' : 'error');
+  } catch(e) {
+    st.textContent = t('cfg_err');
+    st.className   = 'status-line error';
+  }
+  $('cfg-wifi-pass').value = '';
+});
+
+// ── OTA: GitHub ───────────────────────────────────────────────────────────────
+let pendingOtaVer = null;
+
+$('btn-ota-check').addEventListener('click', async () => {
+  $('ota-info').textContent     = t('ota_checking');
+  $('btn-ota-install').disabled = true;
+  pendingOtaVer = null;
+  try {
+    const d = await fetch('/ota/github/check').then(r => r.json());
+    if (d.updateAvailable) {
+      pendingOtaVer = d.version;
+      $('ota-info').innerHTML =
+        `<strong>${t('ota_available')}: v${d.version}</strong><br>` +
+        `FW: ${(d.fwSize/1024).toFixed(0)} KB &nbsp;|&nbsp; FS: ${(d.fsSize/1024).toFixed(0)} KB` +
+        (d.changelog ? `<br><em>${d.changelog}</em>` : '');
+      $('btn-ota-install').disabled = false;
+    } else {
+      $('ota-info').textContent = t('ota_uptodate');
+    }
+  } catch(e) { $('ota-info').textContent = 'Error: ' + e.message; }
+});
+
+$('btn-ota-install').addEventListener('click', async () => {
+  if (!confirm(t('confirm_install', pendingOtaVer || '?'))) return;
+  $('btn-ota-install').disabled = true;
+  await fetch('/ota/github/install', { method: 'POST' });
+});
+
+// ── OTA: Local upload ─────────────────────────────────────────────────────────
+async function uploadBin(fileId, url, isFS) {
+  const file = $(fileId).files[0];
+  const st   = $('local-status');
+  if (!file) return;
+  st.textContent = isFS ? t('upload_fs_note') : t('uploading');
+  st.className   = 'status-line';
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const d = await fetch(url, { method: 'POST', body: form }).then(r => r.json());
+    if (!isFS) {
+      st.textContent = d.ok ? t('fw_ok') : t('fw_err');
+      st.className   = 'status-line ' + (d.ok ? 'ok' : 'error');
+    }
+  } catch(e) {
+    st.textContent = isFS ? t('fs_err') : t('fw_err');
+    st.className   = 'status-line error';
+  }
+}
+$('btn-local-fw').addEventListener('click', () => uploadBin('fw-file', '/ota/local/fw', false));
+$('btn-local-fs').addEventListener('click', () => uploadBin('fs-file', '/ota/local/fs', true));
+
+// ── Reboot ────────────────────────────────────────────────────────────────────
+$('btn-reboot').addEventListener('click', async () => {
+  if (!confirm(t('confirm_reboot'))) return;
+  $('maint-status').textContent = t('rebooting');
+  $('maint-status').className   = 'status-line warn';
+  await fetch('/api/reboot', { method: 'POST' }).catch(() => {});
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+applyTheme();
+applyI18n();
+fetchStatus();
+startSSE();
+setInterval(fetchStatus, 5000);
+</script>
 </body>
 </html>

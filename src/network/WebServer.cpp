@@ -1,5 +1,6 @@
 #include "WebServer.h"
 #include "../config.h"
+#include <time.h>
 #include "../cfg/AppConfig.h"
 #include "../logger/Logger.h"
 #include "../state.h"
@@ -11,6 +12,19 @@
 #include <Update.h>
 
 ::WebServer WebUI::s_server(WEB_PORT);
+
+// SSE state — one active client, pushed non-blocking from task loop
+WiFiClient            WebUI::s_sseClient;
+float                 WebUI::s_sseLastSwr  = -1.0f;
+TunerState::TuneState WebUI::s_sseLastTune = TunerState::TuneState::IDLE;
+TunerState::OtaState  WebUI::s_sseLastOta  = TunerState::OtaState::IDLE;
+uint16_t              WebUI::s_sseLastFreq = 0xFFFF;
+uint16_t              WebUI::s_sseLastL    = 0xFFFF;
+uint16_t              WebUI::s_sseLastC    = 0xFFFF;
+uint8_t               WebUI::s_sseLastMode  = 0xFF;
+bool                  WebUI::s_sseLastKTune = false;
+int8_t                WebUI::s_sseLastRssi  = 0;
+unsigned long         WebUI::s_sseLastHb   = 0;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -35,12 +49,26 @@ String WebUI::buildStatusJSON() {
     doc["freq_kHz"]    = g_state.freq_kHz;
     doc["swr"]         = serialized(String(g_state.swr, 2));
     doc["returnLoss"]  = serialized(String(g_state.returnLoss, 1));
+    doc["vfwd"]        = g_state.vfwd;
+    doc["vrev"]        = g_state.vrev;
+    doc["kTune"]       = g_state.kTune;
     doc["tuneState"]   = (int)g_state.tuneState;
     doc["tuneProgress"]= g_state.tuneProgress;
     doc["otaState"]    = (int)g_state.otaState;
     doc["otaProgress"] = g_state.otaProgress;
     doc["rssi"]        = g_state.rssi;
     doc["fwVersion"]   = g_state.fwVersion;
+    time_t now = time(nullptr);
+    doc["ntpSynced"]   = (now > 1000000000UL);
+    if (now > 1000000000UL) {
+        struct tm ti;
+        localtime_r(&now, &ti);
+        char tstr[20];
+        strftime(tstr, sizeof(tstr), "%Y-%m-%d %H:%M:%S", &ti);
+        doc["localTime"] = tstr;
+    } else {
+        doc["localTime"] = "";
+    }
     String out;
     serializeJson(doc, out);
     return out;
@@ -89,6 +117,30 @@ void WebUI::apiTune() {
         cmd.mode = doc.containsKey("mode") ? (uint8_t)constrain((int)doc["mode"], 1, 3)   : g_state.mode;
     }
     cmd.cmd = I2CCmd::SET_LC;
+    xQueueSend(g_i2cCmdQueue, &cmd, 0);
+    sendJSON(200, "{\"ok\":true}");
+}
+
+void WebUI::apiFinetune() {
+    if (!s_server.hasArg("plain")) { sendError(400, "No body"); return; }
+    StaticJsonDocument<64> doc;
+    deserializeJson(doc, s_server.arg("plain"));
+    bool start = doc["start"] | true;
+    if (start) {
+        xSemaphoreGive(g_fineTuneStartSem);
+    } else {
+        xSemaphoreGive(g_tuneAbortSem);
+    }
+    sendJSON(200, "{\"ok\":true}");
+}
+
+void WebUI::apiKTune() {
+    if (!s_server.hasArg("plain")) { sendError(400, "No body"); return; }
+    StaticJsonDocument<64> doc;
+    if (deserializeJson(doc, s_server.arg("plain"))) { sendError(400, "JSON error"); return; }
+    I2CCommand cmd = {};
+    cmd.cmd   = I2CCmd::SET_KTUNE;
+    cmd.kTune = doc["ktune"] | false;
     xQueueSend(g_i2cCmdQueue, &cmd, 0);
     sendJSON(200, "{\"ok\":true}");
 }
@@ -150,6 +202,7 @@ void WebUI::apiConfigGet() {
     doc["coarse_step_c"]    = g_cfg.coarse_step_c;
     doc["ota_manifest_url"] = g_cfg.ota_manifest_url;
     doc["log_level"]        = g_cfg.log_level;
+    doc["ntp_server"]       = g_cfg.ntp_server;
     String out;
     serializeJson(doc, out);
     sendJSON(200, out);
@@ -170,6 +223,10 @@ void WebUI::apiConfigPost() {
     if (doc.containsKey("coarse_step_l"))   g_cfg.coarse_step_l  = doc["coarse_step_l"];
     if (doc.containsKey("coarse_step_c"))   g_cfg.coarse_step_c  = doc["coarse_step_c"];
     if (doc.containsKey("ota_manifest_url"))strlcpy(g_cfg.ota_manifest_url, doc["ota_manifest_url"] | "", sizeof(g_cfg.ota_manifest_url));
+    if (doc.containsKey("ntp_server")) {
+        strlcpy(g_cfg.ntp_server, doc["ntp_server"] | NTP_SERVER_DEFAULT, sizeof(g_cfg.ntp_server));
+        configTzTime(NTP_TIMEZONE, g_cfg.ntp_server);
+    }
     if (doc.containsKey("log_level")) {
         g_cfg.log_level = doc["log_level"];
         Logger::setLevel((LogLevel)g_cfg.log_level);
@@ -180,50 +237,82 @@ void WebUI::apiConfigPost() {
 }
 
 // ── SSE ───────────────────────────────────────────────────────────────────────
+// Non-blocking: handleSSE() just sends headers and stores the client.
+// pushSSE() is called from taskWebServer every loop iteration.
 
 void WebUI::handleSSE() {
-    WiFiClient client = s_server.client();
-    client.print("HTTP/1.1 200 OK\r\n"
-                 "Content-Type: text/event-stream\r\n"
-                 "Cache-Control: no-cache\r\n"
-                 "Access-Control-Allow-Origin: *\r\n"
-                 "Connection: keep-alive\r\n\r\n");
+    s_sseClient   = s_server.client();
+    // Force full send on first push
+    s_sseLastSwr  = -1.0f;
+    s_sseLastTune = (TunerState::TuneState)0xFF;
+    s_sseLastOta  = (TunerState::OtaState)0xFF;
+    s_sseLastFreq = 0xFFFF;
+    s_sseLastL    = 0xFFFF;
+    s_sseLastC    = 0xFFFF;
+    s_sseLastMode  = 0xFF;
+    s_sseLastKTune = false;
+    s_sseLastRssi  = 0;
+    s_sseLastHb   = 0;
+    s_sseClient.print("HTTP/1.1 200 OK\r\n"
+                      "Content-Type: text/event-stream\r\n"
+                      "Cache-Control: no-cache\r\n"
+                      "Access-Control-Allow-Origin: *\r\n"
+                      "Connection: keep-alive\r\n\r\n");
+    pushSSE();
+}
 
-    TunerState::TuneState lastTune = TunerState::TuneState::IDLE;
-    TunerState::OtaState  lastOta  = TunerState::OtaState::IDLE;
-    float lastSWR = 0;
+void WebUI::pushSSE() {
+    if (!s_sseClient || !s_sseClient.connected()) return;
 
-    unsigned long lastHb = 0;
-    while (client.connected()) {
-        float swr; uint8_t tp, op;
-        TunerState::TuneState ts; TunerState::OtaState os;
-        {
-            StateLock lock;
-            swr = g_state.swr;
-            ts  = g_state.tuneState;
-            tp  = g_state.tuneProgress;
-            os  = g_state.otaState;
-            op  = g_state.otaProgress;
-        }
+    float swr, rl; uint16_t L, C, freq; uint8_t tp, op, mode; int8_t rssi; bool kTune;
+    TunerState::TuneState ts; TunerState::OtaState os;
+    {
+        StateLock lock;
+        swr   = g_state.swr;
+        rl    = g_state.returnLoss;
+        L     = g_state.L;
+        C     = g_state.C;
+        mode  = g_state.mode;
+        kTune = g_state.kTune;
+        freq  = g_state.freq_kHz;
+        rssi  = g_state.rssi;
+        ts    = g_state.tuneState;
+        tp    = g_state.tuneProgress;
+        os    = g_state.otaState;
+        op    = g_state.otaProgress;
+    }
 
-        if (fabs(swr - lastSWR) > 0.05f || ts != lastTune || os != lastOta) {
-            lastSWR  = swr;
-            lastTune = ts;
-            lastOta  = os;
-            char buf[192];
-            snprintf(buf, sizeof(buf),
-                "data:{\"swr\":%.2f,\"tuneState\":%d,\"tuneProgress\":%d,"
-                "\"otaState\":%d,\"otaProgress\":%d}\n\n",
-                swr, (int)ts, tp, (int)os, op);
-            client.print(buf);
-        }
+    bool changed = fabs(swr - s_sseLastSwr) > 0.05f
+                || ts    != s_sseLastTune
+                || os    != s_sseLastOta
+                || freq  != s_sseLastFreq
+                || L     != s_sseLastL
+                || C     != s_sseLastC
+                || mode  != s_sseLastMode
+                || kTune != s_sseLastKTune
+                || rssi  != s_sseLastRssi;
+    bool periodic = (millis() - s_sseLastHb > 2000);
 
-        // Heartbeat comment every 15 s to keep connection alive
-        if (millis() - lastHb > 15000) {
-            client.print(": hb\n\n");
-            lastHb = millis();
-        }
-        delay(200);
+    if (changed || periodic) {
+        s_sseLastSwr   = swr;
+        s_sseLastTune  = ts;
+        s_sseLastOta   = os;
+        s_sseLastFreq  = freq;
+        s_sseLastL     = L;
+        s_sseLastC     = C;
+        s_sseLastMode  = mode;
+        s_sseLastKTune = kTune;
+        s_sseLastRssi  = rssi;
+        s_sseLastHb    = millis();
+        char buf[352];
+        snprintf(buf, sizeof(buf),
+            "data:{\"swr\":%.2f,\"returnLoss\":%.1f,"
+            "\"L\":%u,\"C\":%u,\"mode\":%u,\"kTune\":%d,\"freq_kHz\":%u,"
+            "\"rssi\":%d,\"tuneState\":%d,\"tuneProgress\":%d,"
+            "\"otaState\":%d,\"otaProgress\":%d}\n\n",
+            swr, rl, L, C, mode, kTune ? 1 : 0, freq, rssi,
+            (int)ts, tp, (int)os, op);
+        s_sseClient.print(buf);
     }
 }
 
@@ -255,7 +344,7 @@ void WebUI::otaLocalFS() {
 
     if (up.status == UPLOAD_FILE_START) {
         LOG_INFO("OTA", "Local FS upload start");
-        started = Update.begin(UPDATE_SIZE_UNKNOWN, U_LittleFS);
+        started = Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS);
     } else if (up.status == UPLOAD_FILE_WRITE && started) {
         Update.write(up.buf, up.currentSize);
     } else if (up.status == UPLOAD_FILE_END && started) {
@@ -314,6 +403,8 @@ bool WebUI::begin() {
     s_server.on("/api/status",       HTTP_GET,    apiStatus);
     s_server.on("/api/tune",         HTTP_POST,   apiTune);
     s_server.on("/api/autotune",     HTTP_POST,   apiAutotune);
+    s_server.on("/api/finetune",     HTTP_POST,   apiFinetune);
+    s_server.on("/api/ktune",        HTTP_POST,   apiKTune);
     s_server.on("/api/presets",      HTTP_GET,    apiPresetsGet);
     s_server.on("/api/presets",      HTTP_DELETE, apiPresetsDeleteAll);
     s_server.on("/api/config",       HTTP_GET,    apiConfigGet);
@@ -341,6 +432,7 @@ void WebUI::taskWebServer(void* param) {
     (void)param;
     for (;;) {
         s_server.handleClient();
+        pushSSE();
         vTaskDelay(pdMS_TO_TICKS(5));
     }
 }

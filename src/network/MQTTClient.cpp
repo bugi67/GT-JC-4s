@@ -43,6 +43,17 @@ void MQTTClient::onMessage(char* topic, byte* payload, unsigned int len) {
         } else if (strcmp(val, "0") == 0) {
             xSemaphoreGive(g_tuneAbortSem);
         }
+    } else if (strcmp(topic, MQTT_SUB_FINETUNE) == 0) {
+        if (strcmp(val, "1") == 0) {
+            xSemaphoreGive(g_fineTuneStartSem);
+        } else if (strcmp(val, "0") == 0) {
+            xSemaphoreGive(g_tuneAbortSem);
+        }
+    } else if (strcmp(topic, MQTT_SUB_KTUNE) == 0) {
+        I2CCommand kCmd = {};
+        kCmd.cmd   = I2CCmd::SET_KTUNE;
+        kCmd.kTune = (strcmp(val, "1") == 0);
+        xQueueSend(g_i2cCmdQueue, &kCmd, 0);
     }
 
     if (sendCmd) xQueueSend(g_i2cCmdQueue, &cmd, 0);
@@ -54,6 +65,8 @@ void MQTTClient::subscribe() {
     s_mqtt.subscribe(MQTT_SUB_MODE);
     s_mqtt.subscribe(MQTT_SUB_FREQ);
     s_mqtt.subscribe(MQTT_SUB_TUNE);
+    s_mqtt.subscribe(MQTT_SUB_FINETUNE);
+    s_mqtt.subscribe(MQTT_SUB_KTUNE);
 }
 
 bool MQTTClient::ensureConnected() {
@@ -86,10 +99,11 @@ void MQTTClient::publishStatus() {
     if (!s_mqtt.connected()) return;
 
     char buf[24];
-    uint16_t L, C; uint8_t mode; float swr;
+    uint16_t L, C; uint8_t mode; float swr; bool kTune;
     {
         StateLock lock;
-        L = g_state.L; C = g_state.C; mode = g_state.mode; swr = g_state.swr;
+        L = g_state.L; C = g_state.C; mode = g_state.mode;
+        swr = g_state.swr; kTune = g_state.kTune;
     }
 
     snprintf(buf, sizeof(buf), "%u", L);
@@ -104,6 +118,7 @@ void MQTTClient::publishStatus() {
     s_mqtt.publish(MQTT_PUB_C_PF, buf);
     snprintf(buf, sizeof(buf), "%.2f", swr);
     s_mqtt.publish(MQTT_PUB_SWR, buf);
+    s_mqtt.publish(MQTT_PUB_FB_KTUNE, kTune ? "1" : "0");
 }
 
 void MQTTClient::publishTuneStatus(const char* status, uint8_t progress) {
@@ -120,6 +135,10 @@ void MQTTClient::taskMQTT(void* param) {
     (void)param;
     static unsigned long lastRssi = 0;
     static TunerState::TuneState lastTuneState = TunerState::TuneState::IDLE;
+    static uint16_t lastL     = 0xFFFF;
+    static uint16_t lastC     = 0xFFFF;
+    static uint8_t  lastMode  = 0;
+    static bool     lastKTune = false;
 
     for (;;) {
         if (g_cfg.mqtt_enabled && strlen(g_cfg.mqtt_server) > 0) {
@@ -148,6 +167,18 @@ void MQTTClient::taskMQTT(void* param) {
                         publishTuneStatus(stStr[(int)ts],
                             ts == TunerState::TuneState::TUNING ? stateGet(&TunerState::tuneProgress) : 0);
                         if (ts == TunerState::TuneState::DONE) publishStatus();
+                    }
+
+                    // Publish feedback whenever L/C/mode/kTune changes
+                    uint16_t curL, curC; uint8_t curMode; bool curKTune;
+                    {
+                        StateLock lock;
+                        curL = g_state.L; curC = g_state.C;
+                        curMode = g_state.mode; curKTune = g_state.kTune;
+                    }
+                    if (curL != lastL || curC != lastC || curMode != lastMode || curKTune != lastKTune) {
+                        lastL = curL; lastC = curC; lastMode = curMode; lastKTune = curKTune;
+                        publishStatus();
                     }
                 }
             }
