@@ -25,5 +25,6 @@ private:
     static void coarseScan(uint16_t& L, uint16_t& C, uint8_t& mode);
 
     // Phase 3: fine-step within sliding window around coarse optimum
-    static void fineTune(uint16_t& L, uint16_t& C, uint8_t mode);
+    // verbose=true prints every measurement as a table on Serial
+    static void fineTune(uint16_t& L, uint16_t& C, uint8_t mode, bool verbose = false);
 };

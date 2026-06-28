@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <nvs_flash.h>
 #include <LittleFS.h>
+#include <time.h>
 #include "config.h"
 #include "state.h"
 #include "cfg/AppConfig.h"
@@ -15,8 +16,9 @@
 // ── Global state ──────────────────────────────────────────────────────────────
 TunerState        g_state;
 SemaphoreHandle_t g_stateMutex    = nullptr;
-SemaphoreHandle_t g_tuneStartSem  = nullptr;
-SemaphoreHandle_t g_tuneAbortSem  = nullptr;
+SemaphoreHandle_t g_tuneStartSem     = nullptr;
+SemaphoreHandle_t g_fineTuneStartSem = nullptr;
+SemaphoreHandle_t g_tuneAbortSem     = nullptr;
 QueueHandle_t     g_i2cCmdQueue   = nullptr;
 
 // ── Serial console task ───────────────────────────────────────────────────────
@@ -43,15 +45,21 @@ static void taskSerial(void*) {
                 else if (cmd == "log?")      { Serial.printf("Level: %d\r\n", (int)Logger::getLevel()); }
                 else if (cmd == "reboot")    { ESP.restart(); }
                 else if (cmd == "status") {
-                    StateLock lock;
-                    Serial.printf("L=%u C=%u mode=%u freq=%u SWR=%.2f RL=%.1fdB tune=%d\r\n",
-                        g_state.L, g_state.C, g_state.mode, g_state.freq_kHz,
-                        g_state.swr, g_state.returnLoss, (int)g_state.tuneState);
+                    uint16_t L, C, freq; uint8_t mode; bool kTune;
+                    float swr, rl; uint8_t vfwd, vrev; int tuneState;
+                    { StateLock lock;
+                      L=g_state.L; C=g_state.C; mode=g_state.mode; freq=g_state.freq_kHz;
+                      swr=g_state.swr; rl=g_state.returnLoss;
+                      vfwd=g_state.vfwd; vrev=g_state.vrev;
+                      kTune=g_state.kTune; tuneState=(int)g_state.tuneState; }
+                    Serial.printf("L=%u C=%u mode=%u freq=%u SWR=%.2f RL=%.1fdB vfwd=%u vrev=%u kTune=%d tune=%d\r\n",
+                        L, C, mode, freq, swr, rl, vfwd, vrev, (int)kTune, tuneState);
                 }
             } else if (linePos < (int)sizeof(lineBuf) - 1) {
                 lineBuf[linePos++] = c;
             }
         }
+
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
@@ -82,9 +90,10 @@ void setup() {
     LOG_INFO("System", "GT-JC-4s firmware v%s starting", FIRMWARE_VERSION);
 
     // 5. FreeRTOS primitives
-    g_stateMutex   = xSemaphoreCreateMutex();
-    g_tuneStartSem = xSemaphoreCreateBinary();
-    g_tuneAbortSem = xSemaphoreCreateBinary();
+    g_stateMutex        = xSemaphoreCreateMutex();
+    g_tuneStartSem      = xSemaphoreCreateBinary();
+    g_fineTuneStartSem  = xSemaphoreCreateBinary();
+    g_tuneAbortSem      = xSemaphoreCreateBinary();
     g_i2cCmdQueue  = xQueueCreate(I2C_CMD_QUEUE_DEPTH, sizeof(I2CCommand));
 
     // 6. I2C + hardware probe
@@ -99,6 +108,10 @@ void setup() {
     if (!WiFiManager::begin()) {
         WiFiManager::runCaptivePortal();
     }
+
+    // 8b. NTP — start SNTP sync (non-blocking, runs in ESP-IDF background)
+    configTzTime(NTP_TIMEZONE, g_cfg.ntp_server);
+    LOG_INFO("NTP", "SNTP started, server: %s", g_cfg.ntp_server);
 
     // 9. MQTT
     MQTTClient::begin();

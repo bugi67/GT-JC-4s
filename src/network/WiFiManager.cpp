@@ -5,6 +5,7 @@
 #include <WiFi.h>
 #include <DNSServer.h>
 #include <WebServer.h>
+#include <Preferences.h>
 
 bool WiFiManager::s_apMode = false;
 
@@ -137,6 +138,18 @@ void WiFiManager::runCaptivePortal() {
 // ── Public ────────────────────────────────────────────────────────────────────
 
 bool WiFiManager::begin() {
+    // NVS credentials survive LittleFS flashes → try them first
+    Preferences prefs;
+    prefs.begin("wifi", true);
+    String nvsSsid = prefs.getString("ssid", "");
+    String nvsPass = prefs.getString("pass", "");
+    prefs.end();
+    if (nvsSsid.length() > 0) {
+        strlcpy(g_cfg.wifi_ssid, nvsSsid.c_str(), sizeof(g_cfg.wifi_ssid));
+        strlcpy(g_cfg.wifi_pass, nvsPass.c_str(), sizeof(g_cfg.wifi_pass));
+        LOG_INFO("WiFi", "Credentials loaded from NVS (SSID: %s)", g_cfg.wifi_ssid);
+    }
+
     if (strlen(g_cfg.wifi_ssid) == 0) {
         LOG_WARN("WiFi", "No credentials – starting setup AP");
         startAP();
@@ -161,10 +174,17 @@ String WiFiManager::getSSID() { return String(g_cfg.wifi_ssid); }
 int8_t WiFiManager::getRSSI() { return WiFi.RSSI(); }
 
 void WiFiManager::saveCredentials(const char* ssid, const char* pass) {
+    // Save to NVS first — survives LittleFS flashes
+    Preferences prefs;
+    prefs.begin("wifi", false);
+    prefs.putString("ssid", ssid);
+    prefs.putString("pass", pass);
+    prefs.end();
+    // Also keep in g_cfg / config.json for other users of the struct
     strlcpy(g_cfg.wifi_ssid, ssid, sizeof(g_cfg.wifi_ssid));
     strlcpy(g_cfg.wifi_pass, pass, sizeof(g_cfg.wifi_pass));
     Config::save();
-    LOG_INFO("WiFi", "Credentials saved, rebooting...");
+    LOG_INFO("WiFi", "Credentials saved to NVS, rebooting...");
     delay(500);
     ESP.restart();
 }

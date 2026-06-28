@@ -14,6 +14,7 @@ struct AppConfig {
     uint16_t coarse_step_c;
     char     ota_manifest_url[256];
     uint8_t  log_level;
+    char     ntp_server[64];
 };
 
 extern AppConfig g_cfg;

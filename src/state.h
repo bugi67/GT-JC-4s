@@ -8,13 +8,17 @@
 enum class I2CCmd : uint8_t {
     SET_LC,        // set L, C, mode relays
     READ_SWR,      // trigger SWR measurement, result written to state
+    SET_KTUNE,     // set K-Tune relay (0x39.P3); uses kTune field only
+    SAVE_PRESET,   // write preset to EEPROM; uses freq_kHz, L, C, mode fields
 };
 
 struct I2CCommand {
-    I2CCmd cmd;
+    I2CCmd   cmd;
     uint16_t L;
     uint16_t C;
     uint8_t  mode;
+    bool     kTune;      // used by SET_KTUNE
+    uint16_t freq_kHz;   // used by SAVE_PRESET
 };
 
 // ── Central runtime state ─────────────────────────────────────────────────────
@@ -30,6 +34,9 @@ struct TunerState {
     float    returnLoss = 0.0f;   // dB
     uint8_t  vfwd       = 0;
     uint8_t  vrev       = 0;
+
+    // K-Tune relay
+    bool     kTune     = false;    // 0x39.P3
 
     // AutoTuner state
     enum class TuneState : uint8_t {
@@ -53,6 +60,7 @@ struct TunerState {
 extern TunerState          g_state;
 extern SemaphoreHandle_t   g_stateMutex;
 extern SemaphoreHandle_t   g_tuneStartSem;
+extern SemaphoreHandle_t   g_fineTuneStartSem;
 extern SemaphoreHandle_t   g_tuneAbortSem;
 extern QueueHandle_t       g_i2cCmdQueue;
 

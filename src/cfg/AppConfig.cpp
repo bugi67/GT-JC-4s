@@ -19,6 +19,7 @@ static void applyDefaults(AppConfig& c) {
     c.coarse_step_c   = DEFAULT_COARSE_C;
     strlcpy(c.ota_manifest_url, OTA_MANIFEST_URL_DEFAULT, sizeof(c.ota_manifest_url));
     c.log_level       = LOG_LEVEL_DEFAULT;
+    strlcpy(c.ntp_server, NTP_SERVER_DEFAULT, sizeof(c.ntp_server));
 }
 
 bool Config::load() {
@@ -51,6 +52,7 @@ bool Config::load() {
     strlcpy(g_cfg.ota_manifest_url, doc["ota_manifest_url"] | OTA_MANIFEST_URL_DEFAULT,
             sizeof(g_cfg.ota_manifest_url));
     g_cfg.log_level      = doc["log_level"]      | (uint8_t)LOG_LEVEL_DEFAULT;
+    strlcpy(g_cfg.ntp_server, doc["ntp_server"] | NTP_SERVER_DEFAULT, sizeof(g_cfg.ntp_server));
 
     LOG_INFO("Config", "Loaded from " CONFIG_PATH);
     return true;
@@ -70,6 +72,7 @@ bool Config::save() {
     doc["coarse_step_c"]    = g_cfg.coarse_step_c;
     doc["ota_manifest_url"] = g_cfg.ota_manifest_url;
     doc["log_level"]        = g_cfg.log_level;
+    doc["ntp_server"]       = g_cfg.ntp_server;
 
     File f = LittleFS.open(CONFIG_PATH, "w");
     if (!f) {
