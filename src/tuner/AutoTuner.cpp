@@ -59,20 +59,54 @@ bool AutoTuner::presetSearch(uint16_t& L, uint16_t& C, uint8_t& mode) {
     return false;
 }
 
+// ── Band limits for coarse scan ──────────────────────────────────────────────
+// L_max = XL_max(1000Ω) / (2π·f) / 0.039µH; C_max = 1/(2π·f·XC_min(10Ω)) in pF / 6.25 pF/step
+// Full range below 40m; reduced above to cut scan time (4–50× faster on higher bands).
+
+struct BandLimit { uint16_t fLow, fHigh, lMax, cMax; };
+
+static const BandLimit BAND_LIMITS[] = {
+    { 1800,  2000, 2047, 511 },   // 160m — full range
+    { 3500,  4000, 2047, 511 },   // 80m  — full range
+    { 5351,  5366,  763, 494 },   // 60m  ~30 µH, ~2970 pF
+    { 7000,  7300,  576, 511 },   // 40m  ~22 µH, >3000 pF
+    {10100, 10150,  404, 494 },   // 30m  ~16 µH, ~1580 pF
+    {14000, 14350,  292, 357 },   // 20m  ~11 µH, ~1140 pF
+    {18068, 18168,  225, 275 },   // 17m  ~8.8 µH, ~880 pF
+    {21000, 21450,  195, 237 },   // 15m  ~7.6 µH, ~760 pF
+    {24890, 24990,  164, 200 },   // 12m  ~6.4 µH, ~640 pF
+    {28000, 29700,  146, 178 },   // 10m  ~5.7 µH, ~570 pF
+};
+
+static void getBandLimits(uint16_t freq_kHz, uint16_t& lMax, uint16_t& cMax) {
+    for (const auto& b : BAND_LIMITS) {
+        if (freq_kHz >= b.fLow && freq_kHz <= b.fHigh) {
+            lMax = b.lMax; cMax = b.cMax;
+            return;
+        }
+    }
+    lMax = L_MAX; cMax = C_MAX;  // default: full range
+}
+
 // ── Phase 2: Coarse scan ─────────────────────────────────────────────────────
 
 void AutoTuner::coarseScan(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
     float bestRL = -999.0f;
     I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
 
-    uint16_t lSteps = (L_MAX / g_cfg.coarse_step_l) + 1;
-    uint16_t cSteps = (C_MAX / g_cfg.coarse_step_c) + 1;
+    uint16_t lMax, cMax;
+    getBandLimits(stateGet(&TunerState::freq_kHz), lMax, cMax);
+    LOG_INFO("AutoTuner", "Coarse scan: L 0..%u step %u, C 0..%u step %u",
+             lMax, g_cfg.coarse_step_l, cMax, g_cfg.coarse_step_c);
+
+    uint16_t lSteps = (lMax / g_cfg.coarse_step_l) + 1;
+    uint16_t cSteps = (cMax / g_cfg.coarse_step_c) + 1;
     uint32_t totalSteps = (uint32_t)lSteps * cSteps * 2;  // modes 1+2 only (no "No C")
     uint32_t step = 0;
 
     for (uint8_t m = 1; m <= 2; m++) {  // 1=C@TRX, 2=C@ANT; mode 3 (No C) skipped
-        for (uint16_t c = 0; c <= C_MAX; c += g_cfg.coarse_step_c) {
-            for (uint16_t l = 0; l <= L_MAX; l += g_cfg.coarse_step_l) {
+        for (uint16_t c = 0; c <= cMax; c += g_cfg.coarse_step_c) {
+            for (uint16_t l = 0; l <= lMax; l += g_cfg.coarse_step_l) {
                 if (isAbortRequested()) {
                     LOG_INFO("AutoTuner", "Coarse scan aborted");
                     return;
