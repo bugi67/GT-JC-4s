@@ -1,4 +1,4 @@
-# GT-JC-4s — Projektspezifikation v1.4
+# GT-JC-4s — Projektspezifikation v1.5
 **Antennenkoppler-Steuerung mit AutoTuner**
 Datum: 2026-06-28 | Autor: HB9CZF | Status: Implementiert / In Test
 
@@ -108,9 +108,26 @@ Web-GUI   ──HTTP──►  ESP32-C3            PCF8591 ADC   ◄──  SWR-
 3. Wenn Return Loss ≥ Schwellwert (default 18 dB ≈ SWR 1.29): fertig
 
 **Phase 2 — Coarse-Scan**
-- Alle C×L-Kombinationen in konfigurierbaren Schritten
-- Modi 1 und 2 → bestes Ergebnis behalten
+- C×L-Kombinationen in konfigurierbaren Schritten, Modi 1 und 2
+- **Band-spezifische Suchraumgrenzen:** `getBandLimits(freq_kHz)` liefert pro Band ein reduziertes L_max / C_max (Tabelle unten). Bei unbekannter oder ausserband-Frequenz: voller Bereich (L_max=2047, C_max=511). Ergibt auf 10m bis zu 56× weniger Messpunkte als ein Vollscan.
 - Abbruch via MQTT `JC-4s/tune = 0` oder Web-GUI
+
+**Coarse-Scan Band-Grenzen:**
+
+| Band | f (kHz) | L_max raw | L_max (µH) | C_max raw | C_max (pF) | Messpunkte × 2 Modi |
+|------|---------|-----------|-----------|-----------|-----------|---------------------|
+| 160m | 1800–2000 | 2047 | 79,8 | 511 | 3193 | 2048 |
+| 80m | 3500–4000 | 2047 | 79,8 | 511 | 3193 | 2048 |
+| 60m | 5351–5366 | 763 | 29,8 | 494 | 2975 | 720 |
+| 40m | 7000–7300 | 576 | 22,5 | 511 | 3193 | 576 |
+| 30m | 10100–10150 | 404 | 15,8 | 494 | 2975 | 390 |
+| 20m | 14000–14350 | 292 | 11,4 | 357 | 2175 | 161 |
+| 17m | 18068–18168 | 225 | 8,8 | 275 | 1668 | 96 |
+| 15m | 21000–21450 | 195 | 7,6 | 237 | 1440 | 72 |
+| 12m | 24890–24990 | 164 | 6,4 | 200 | 1212 | 52 |
+| 10m | 28000–29700 | 146 | 5,7 | 178 | 1075 | 36 |
+
+> Messpunkte = ⌊L_max / step_L + 1⌋ × ⌊C_max / step_C + 1⌋; step_L=64, step_C=16 (Defaults)
 
 **Phase 3 — Fine-Step (Sliding Window)**
 - Fenstergrösse: 9 Punkte (±4) um Coarse-Optimum
@@ -566,3 +583,4 @@ GT-JC-4s/
 | 25 | Preset RAM-Cache: `read()` / `findBest()` wire-frei → keine Race-Condition mit taskI2C | ✅ |
 | 26 | Web-GUI: Preset-Tabelle auto-refresh 500 ms nach tuneState → DONE | ✅ |
 | 27 | Final-SWR: 20 ms Settle vor Messung (Relay-Federrückstellung); Erfassung vor K-Tune OFF | ✅ |
+| 28 | Coarse-Scan: band-spezifische L_max/C_max-Grenzen (160m–10m + 60m); Fallback = voller Bereich | ✅ |
