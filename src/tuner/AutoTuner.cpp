@@ -95,11 +95,6 @@ struct Candidate { uint16_t L, C; uint8_t mode; float RL; };
 static Candidate s_cands[3];
 static int       s_nCands;
 
-// Best L=0 result from coarse scan — tracked separately from top-3 so we always
-// explore the small-L region at medium resolution (catches narrow optima like
-// L=15 whose coarse neighbours score too poorly to enter the top-3).
-struct L0Cand { uint16_t C; uint8_t mode; float RL; };
-static L0Cand s_l0cand;
 
 // Add a point to the top-3 diverse candidate list.
 // "Diverse" means each candidate must be at least 1 coarse step away from all
@@ -126,7 +121,6 @@ void AutoTuner::coarseScan(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) 
     float bestRL = -999.0f;
     I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
     s_nCands = 0;
-    s_l0cand = {0, 1, -999.0f};
 
     uint16_t lMax, cMax;
     getBandLimits(stateGet(&TunerState::freq_kHz), lMax, cMax);
@@ -152,13 +146,44 @@ void AutoTuner::coarseScan(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) 
                 float rl = getRL();
                 if (rl > bestRL) { bestRL = rl; bestL = l; bestC = c; bestMode = m; }
                 addCandidate(l, c, m, rl);
-                if (l == 0 && rl > s_l0cand.RL) s_l0cand = {c, m, rl};
                 step++;
                 reportProgress((uint8_t)(step * 70 / totalSteps));   // 0-70% for coarse
             }
         }
     }
     LOG_INFO("AutoTuner", "Coarse done: L=%u C=%u mode=%u RL=%.1fdB", bestL, bestC, bestMode, bestRL);
+}
+
+// ── Phase 2.25: Inter-L scan ─────────────────────────────────────────────────
+// The coarse scan steps L at coarse_step_l (64). Optimal L values that fall in
+// the gaps (e.g. L=15 between L=0 and L=64) never appear in the coarse top-3.
+// This pass probes the intermediate L values — at coarse_step_l/4 spacing
+// (L=16, 32, 48 for step=64) — against ALL C at the coarse C step.
+// Cost: ~200 measurements (~7 s). The best result feeds an extra medium scan.
+
+void AutoTuner::interLScan(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
+    uint16_t lMax, cMax;
+    getBandLimits(stateGet(&TunerState::freq_kHz), lMax, cMax);
+    // Intermediate step: coarse/4, minimum 8 to avoid overlap with fine-tune
+    uint16_t stepL = max((uint16_t)8, (uint16_t)(g_cfg.coarse_step_l / 4));
+
+    float bestRL = -999.0f;
+    I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
+
+    for (uint8_t m = 1; m <= 2; m++) {
+        for (uint16_t c = 0; c <= cMax; c += g_cfg.coarse_step_c) {
+            // Only probe intermediate L values — L=0 and L=coarseStep already in coarse
+            for (uint16_t l = stepL; l < g_cfg.coarse_step_l; l += stepL) {
+                if (isAbortRequested()) return;
+                setLCAndWait(l, c, m, 3);
+                xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
+                vTaskDelay(pdMS_TO_TICKS(15));
+                float rl = getRL();
+                if (rl > bestRL) { bestRL = rl; bestL = l; bestC = c; bestMode = m; }
+            }
+        }
+    }
+    LOG_INFO("AutoTuner", "Inter-L scan best: L=%u C=%u mode=%u RL=%.1f dB", bestL, bestC, bestMode, bestRL);
 }
 
 // ── Phase 2.5: Medium scan ───────────────────────────────────────────────────
@@ -286,11 +311,17 @@ bool AutoTuner::runTune(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
     coarseScan(bestL, bestC, bestMode);
     if (isAbortRequested()) return false;
 
-    // Phase 2.5 — medium scan from each top-3 coarse candidate + forced L=0 scan.
-    // Forced L=0: even if L=0's coarse RL was too poor to enter top-3, its medium scan
-    // covers L=0..64 at step=8, so fine-tune can then reach narrow optima like L=15.
+    // Phase 2.25 — inter-L scan: fills coarse L gaps (e.g. L=16,32,48) at all C.
+    // The best result is used as a 4th medium candidate alongside the top-3.
+    uint16_t ilL = 0, ilC = 0; uint8_t ilMode = 1;
+    interLScan(ilL, ilC, ilMode);
+    if (isAbortRequested()) return false;
+
+    // Phase 2.5 — medium scan from top-3 coarse candidates + inter-L best
     {
         float overallRL = -999.0f;
+
+        // Top-3 from coarse scan
         for (int ci = 0; ci < s_nCands; ci++) {
             uint16_t tL = s_cands[ci].L, tC = s_cands[ci].C; uint8_t tMode = s_cands[ci].mode;
             LOG_INFO("AutoTuner", "Medium scan %d/%d from L=%u C=%u mode=%u", ci+1, s_nCands, tL, tC, tMode);
@@ -304,23 +335,24 @@ bool AutoTuner::runTune(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
             if (rl > overallRL) { overallRL = rl; bestL = tL; bestC = tC; bestMode = tMode; }
         }
 
-        // Forced L=0 exploration — always run unless L=0 is already a top-3 candidate.
-        bool l0InCands = false;
+        // Inter-L best — always explore unless already covered by top-3
+        bool ilInCands = false;
         for (int ci = 0; ci < s_nCands; ci++) {
-            if (s_cands[ci].L == 0) { l0InCands = true; break; }
+            uint16_t dL = (uint16_t)abs((int)ilL - (int)s_cands[ci].L);
+            uint16_t dC = (uint16_t)abs((int)ilC - (int)s_cands[ci].C);
+            if (dL < g_cfg.coarse_step_l && dC < g_cfg.coarse_step_c) { ilInCands = true; break; }
         }
-        if (!l0InCands && s_l0cand.RL > -999.0f) {
-            uint16_t tL = 0, tC = s_l0cand.C; uint8_t tMode = s_l0cand.mode;
-            LOG_INFO("AutoTuner", "Medium scan (L=0 forced) from C=%u mode=%u", tC, tMode);
-            mediumScan(tL, tC, tMode);
+        if (!ilInCands) {
+            LOG_INFO("AutoTuner", "Medium scan (inter-L) from L=%u C=%u mode=%u", ilL, ilC, ilMode);
+            mediumScan(ilL, ilC, ilMode);
             if (isAbortRequested()) return false;
-            setLCAndWait(tL, tC, tMode, 5);
+            setLCAndWait(ilL, ilC, ilMode, 5);
             I2CCommand mCmd3 = {I2CCmd::READ_SWR, 0, 0, 0};
             xQueueSend(g_i2cCmdQueue, &mCmd3, portMAX_DELAY);
             vTaskDelay(pdMS_TO_TICKS(20));
             float rl = getRL();
-            if (rl > overallRL) { overallRL = rl; bestL = tL; bestC = tC; bestMode = tMode; }
-            LOG_INFO("AutoTuner", "Medium L=0 forced: L=%u C=%u mode=%u RL=%.1f dB", tL, tC, tMode, rl);
+            if (rl > overallRL) { overallRL = rl; bestL = ilL; bestC = ilC; bestMode = ilMode; }
+            LOG_INFO("AutoTuner", "Medium inter-L result: L=%u C=%u mode=%u RL=%.1f dB", ilL, ilC, ilMode, rl);
         }
 
         LOG_INFO("AutoTuner", "Medium best: L=%u C=%u mode=%u RL=%.1f dB", bestL, bestC, bestMode, overallRL);
