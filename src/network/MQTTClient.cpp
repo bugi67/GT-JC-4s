@@ -42,9 +42,13 @@ void MQTTClient::onMessage(char* topic, byte* payload, unsigned int len) {
         static uint16_t lastSeg = 0xFFFF;
         uint16_t seg = (newFreq / 20) * 20;
         if (newFreq > 0 && seg != lastSeg) {
+            lastSeg = seg;
+            // Search by segment base frequency and require exact match.
+            // findBest(newFreq) could return a preset from an adjacent segment
+            // if that segment's preset is numerically closer (e.g. 7040 at delta 8
+            // beats 7020 at delta 12 for newFreq=7032).
             Preset p;
-            if (PresetStore::findBest(newFreq, p) && (p.freq_kHz / 20) * 20 == seg) {
-                lastSeg = seg;  // only lock segment when preset was actually applied
+            if (PresetStore::findBest(seg, p) && p.freq_kHz == seg) {
                 LOG_INFO("MQTT", "New seg %u kHz: applying preset L=%u C=%u mode=%u", seg, p.L, p.C, p.mode);
                 cmd = {I2CCmd::SET_LC, p.L, p.C, p.mode};
                 sendCmd = true;
