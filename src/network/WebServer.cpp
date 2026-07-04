@@ -169,6 +169,7 @@ void WebUI::apiPresetsGet() {
             o["L"]        = p.L;
             o["C"]        = p.C;
             o["mode"]     = p.mode;
+            o["swr"]      = (p.swr > 0.0f) ? serialized(String(p.swr, 2)) : serialized(String("null"));
         }
     }
     String out;

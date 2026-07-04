@@ -19,6 +19,7 @@ struct I2CCommand {
     uint8_t  mode;
     bool     kTune;      // used by SET_KTUNE
     uint16_t freq_kHz;   // used by SAVE_PRESET
+    float    swr;        // used by SAVE_PRESET
 };
 
 // ── Central runtime state ─────────────────────────────────────────────────────
