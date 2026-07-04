@@ -1,6 +1,6 @@
-# GT-JC-4s — Projektspezifikation v1.5
+# GT-JC-4s — Projektspezifikation v1.6
 **Antennenkoppler-Steuerung mit AutoTuner**
-Datum: 2026-06-28 | Autor: HB9CZF | Status: Implementiert / In Test
+Datum: 2026-07-04 | Autor: HB9CZF | Status: Implementiert / In Test
 
 ---
 
@@ -84,6 +84,9 @@ Web-GUI   ──HTTP──►  ESP32-C3            PCF8591 ADC   ◄──  SWR-
 
 **MQTT-Feedback-Logik:** Da die I2C-Ausführung asynchron via Queue läuft, erkennt `taskMQTT` Zustandsänderungen von L/C/mode/kTune in g_state und publiziert dann `publishStatus()`. Ebenso bei Tune-Status-Wechsel.
 
+**MQTT Frequenz-Auto-Apply (Segment-Wechsel):**
+Wenn `JC-4s/freq` einen Wert sendet der zu einem anderen 20 kHz-Segment gehört als die zuletzt empfangene Frequenz, sucht `taskMQTT` via `PresetStore::findBest(seg)` nach einem Preset für dieses Segment. Falls ein Preset mit exakt passender Segment-Basisfrequenz (`p.freq_kHz == seg`) existiert, wird sofort `SET_LC` gesendet — ohne AutoTune. Kein Match: kein SET_LC, `lastSeg` wird trotzdem aktualisiert (verhindert Retry-Schleife).
+
 #### Web-GUI Steuerung
 - Slider für L (0–2047) und C (0–511)
 - Buttons für Tuner-Modi (C@TRX / C@ANT / kein C)
@@ -108,8 +111,9 @@ Web-GUI   ──HTTP──►  ESP32-C3            PCF8591 ADC   ◄──  SWR-
 3. Wenn Return Loss ≥ Schwellwert (default 18 dB ≈ SWR 1.29): fertig
 
 **Phase 2 — Coarse-Scan**
-- C×L-Kombinationen in konfigurierbaren Schritten, Modi 1 und 2
+- C×L-Kombinationen in konfigurierbaren Schritten (Default: L-Schritt=64, C-Schritt=16), Modi 1 und 2
 - **Band-spezifische Suchraumgrenzen:** `getBandLimits(freq_kHz)` liefert pro Band ein reduziertes L_max / C_max (Tabelle unten). Bei unbekannter oder ausserband-Frequenz: voller Bereich (L_max=2047, C_max=511). Ergibt auf 10m bis zu 56× weniger Messpunkte als ein Vollscan.
+- **Top-3 diverse Kandidaten:** Statt nur dem globalen Besten werden die drei besten Messpunkte verfolgt, wobei jeder Kandidat mindestens 1 Coarse-Schritt Abstand (in L *und* C) von den anderen haben muss. Ziel: verschiedene Regionen des L/C-Raums abdecken, damit schmale Optima nicht durch einen dominanten Falsch-Treffer verdrängt werden.
 - Abbruch via MQTT `JC-4s/tune = 0` oder Web-GUI
 
 **Coarse-Scan Band-Grenzen:**
@@ -128,6 +132,20 @@ Web-GUI   ──HTTP──►  ESP32-C3            PCF8591 ADC   ◄──  SWR-
 | 10m | 28000–29700 | 146 | 5,7 | 178 | 1075 | 36 |
 
 > Messpunkte = ⌊L_max / step_L + 1⌋ × ⌊C_max / step_C + 1⌋; step_L=64, step_C=16 (Defaults)
+
+**Phase 2.25 — Inter-L Scan**
+- Ziel: L-Werte zwischen den Coarse-Stützpunkten abdecken (z.B. L=15 liegt zwischen L=0 und L=64).
+- Schrittweite: `coarse_step_l / 4` = 16 (Default). Probierte L-Werte: 16, 32, 48 (L=0 und L=64 sind bereits im Coarse-Scan).
+- Alle C-Werte im Coarse C-Schritt (step=16), beide Modi.
+- Messpunkte: 3 × 33 × 2 ≈ 200, Dauer: ~7 s.
+- Das beste Ergebnis dient als 4. Medium-Kandidat.
+
+**Phase 2.5 — Medium-Scan**
+- Ausgeführt für jeden der Top-3 Coarse-Kandidaten **und** den Inter-L Besten (falls nicht bereits in Top-3).
+- Bereich: ±1 Coarse-Schritt (±64) in L und C um den jeweiligen Startpunkt.
+- Schrittweite: `coarse_step_l / 8` = 8 (L), `coarse_step_c / 4` = 4 (C).
+- Beispiel: von (L=16, C=64) → L=0..80 step=8, C=48..80 step=4 → findet L=16, C=72 → Fine-Tune → L=15, C=71.
+- Nach allen Medium-Scans: globales Bestes (höchster Return Loss) wird für Fine-Tune übernommen.
 
 **Phase 3 — Fine-Step (Sliding Window)**
 - Fenstergrösse: 9 Punkte (±4) um Coarse-Optimum
@@ -187,17 +205,20 @@ SWR = (1 + rho) / (1 - rho)
 - Kein TX-Signal (Vfwd < tune_tx_level): swr = 0.0, returnLoss = 0.0 → Web-GUI zeigt „—"
 - Hintergrundmessung: `taskI2C` misst alle ~250 ms bei leerem Befehlspuffer
 
-**Preset-Speicherung (I2C-EEPROM 0x50)**
+**Preset-Speicherung (I2C-EEPROM 0x50) — Format v2**
 ```
-Struktur je Preset (6 Byte):
-  uint16_t freq;      // Frequenz in kHz (Big-Endian)
+Struktur je Preset (7 Byte):
+  uint16_t freq;      // Frequenz in kHz (Big-Endian), gerundet auf 20 kHz-Segment-Basis
   uint16_t L;         // L-Wert 0–2047 (Big-Endian)
   uint16_t C_mode;    // Bits 15..7: C-Wert 0–511, Bits 1..0: Tuner-Modus
+  uint8_t  swr10;     // SWR × 10 als uint8_t (0 = unbekannt); SWR 1.05 → 10
 ```
-- Max. 42 Presets (256 Byte EEPROM)
-- Sortierung nach Frequenz; Überschreiben bei gleicher Frequenz
-- EEPROM-Schreiben: Byte-für-Byte mit **Acknowledge-Polling** (PCF8582C NACKt während Write-Cycle; kein `vTaskDelay` → kein Taskwechsel während Polling → kein Wire-Konflikt)
-- **RAM-Cache:** `PresetStore::read()` und `findBest()` lesen ausschliesslich aus einem In-Memory-Array (`s_presets[42]`). Wire wird nur in `taskI2C` für Schreibvorgänge verwendet. Damit sind Lesezugriffe aus `taskWeb` (API) und `taskAutoTuner` (Preset-Suche) race-condition-frei.
+- Max. 36 Presets (⌊256 / 7⌋)
+- **20 kHz-Segment-Adressierung:** Frequenz wird beim Speichern auf die Segment-Basisfrequenz gerundet (`floor(freq_kHz / 20) * 20`). 7032 kHz → gespeichert als 7020. Pro Segment darf nur **ein** Preset existieren; bestehende Einträge im selben Segment werden vor dem Speichern gelöscht.
+- `PresetStore::findBest(seg)` sucht das Preset mit kleinstem Abstand zur übergebenen Frequenz. Für MQTT-Auto-Apply wird auf exakten Segment-Match geprüft (`p.freq_kHz == seg`).
+- **Format-Migration:** Beim Laden (`begin()`) wird jeder Eintrag auf gültige Frequenz (1800–30000 kHz) geprüft. Ausserhalb liegende Werte signalisieren das alte 6-Byte-Format → Ladevorgang stoppt, EEPROM gilt als leer.
+- Sortierung nach Frequenz; EEPROM-Schreiben: Byte-für-Byte mit **Acknowledge-Polling** (PCF8582C NACKt während Write-Cycle; kein `vTaskDelay` → kein Taskwechsel → kein Wire-Konflikt)
+- **RAM-Cache:** `PresetStore::read()` und `findBest()` lesen ausschliesslich aus einem In-Memory-Array (`s_presets[36]`). Wire wird nur in `taskI2C` für Schreibvorgänge verwendet. Damit sind Lesezugriffe aus `taskWeb` (API) und `taskAutoTuner` (Preset-Suche) race-condition-frei.
 
 #### AutoTune-Status via MQTT
 | Topic | Wert | Beschreibung |
@@ -269,7 +290,7 @@ HTML/CSS/JS liegen als separate Dateien in LittleFS (`data/`). Kein externes CDN
 
 **Seiten:**
 1. **Dashboard** — L/C-Slider, Tuner-Modi, AutoTune-Button, **Fine-Tune-Button**, **K-Tune-Button**, SWR-Live-Anzeige
-2. **Presets** — Tabelle aller gespeicherten Presets, Löschen-Button je Preset; **automatische Aktualisierung 500 ms nach Tune-Abschluss**
+2. **Presets** — Tabelle aller gespeicherten Presets (Freq, L, C, Modus, **SWR**), Löschen-Button je Preset; **automatische Aktualisierung 500 ms nach Tune-Abschluss**
 3. **Settings** — WLAN, MQTT, Tune-Parameter, OTA-URL, Log-Level
 4. **Maintenance** — OTA Update (lokal + GitHub), Systemneustart
 
@@ -531,7 +552,7 @@ GT-JC-4s/
 |---|---|
 | Web-GUI Ladezeit | < 2 s im lokalen WLAN |
 | SSE-Update-Latenz | ≤ 5 ms bei Zustandsänderung (sofortiger Push) |
-| AutoTune-Dauer (full scan) | < 60 s |
+| AutoTune-Dauer (full scan) | < 90 s (inkl. Inter-L + 4× Medium-Scan) |
 | AutoTune-Dauer (Preset-Hit) | < 5 s |
 | Fine-Tune-Dauer | < 15 s (typisch 2–3 Iterationen) |
 | MQTT-Reconnect-Intervall | 5 s |
@@ -552,7 +573,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v1.4 — Implementiert
+## 12. Status v1.6 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -584,3 +605,10 @@ GT-JC-4s/
 | 26 | Web-GUI: Preset-Tabelle auto-refresh 500 ms nach tuneState → DONE | ✅ |
 | 27 | Final-SWR: 20 ms Settle vor Messung (Relay-Federrückstellung); Erfassung vor K-Tune OFF | ✅ |
 | 28 | Coarse-Scan: band-spezifische L_max/C_max-Grenzen (160m–10m + 60m); Fallback = voller Bereich | ✅ |
+| 29 | Preset-Frequenz: Rundung auf 20 kHz-Segment-Basis (`floor(f/20)*20`); max. 1 Preset/Segment | ✅ |
+| 30 | EEPROM-Format v2: 7 Byte/Eintrag, Byte 6 = SWR×10; max. 36 Presets; Migrations-Check beim Start | ✅ |
+| 31 | SWR je Preset: gespeichert nach Tune, angezeigt in Web-GUI Preset-Tabelle | ✅ |
+| 32 | MQTT `JC-4s/freq`: Segment-Wechsel → Auto-Apply gespeichertes Preset (exakter Segment-Match) | ✅ |
+| 33 | Coarse-Scan: Top-3 diverse Kandidaten (räumlich getrennt, ≥ 1 Coarse-Schritt Abstand) | ✅ |
+| 34 | Phase 2.5 Medium-Scan: ±coarseStep bei step/8 Granularität; von allen Top-3 Kandidaten | ✅ |
+| 35 | Phase 2.25 Inter-L Scan: L=16,32,48 bei allen C (coarse C step); 4. Medium-Kandidat | ✅ |
