@@ -295,7 +295,7 @@ void AutoTuner::taskAutoTuner(void* param) {
         if (ok) {
             uint16_t freq = stateGet(&TunerState::freq_kHz);
             if (freq > 0) {
-                uint16_t freqSnapped = ((freq + 10) / 20) * 20;  // round to nearest 20 kHz segment
+                uint16_t freqSnapped = (freq / 20) * 20;  // floor to 20 kHz segment start
                 LOG_INFO("AutoTuner", "Saving preset at %u kHz (snapped from %u kHz)", freqSnapped, freq);
                 I2CCommand sc = {};
                 sc.cmd = I2CCmd::SAVE_PRESET;
