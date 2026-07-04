@@ -42,9 +42,9 @@ void MQTTClient::onMessage(char* topic, byte* payload, unsigned int len) {
         static uint16_t lastSeg = 0xFFFF;
         uint16_t seg = (newFreq / 20) * 20;
         if (newFreq > 0 && seg != lastSeg) {
-            lastSeg = seg;
             Preset p;
             if (PresetStore::findBest(newFreq, p) && (p.freq_kHz / 20) * 20 == seg) {
+                lastSeg = seg;  // only lock segment when preset was actually applied
                 LOG_INFO("MQTT", "New seg %u kHz: applying preset L=%u C=%u mode=%u", seg, p.L, p.C, p.mode);
                 cmd = {I2CCmd::SET_LC, p.L, p.C, p.mode};
                 sendCmd = true;
