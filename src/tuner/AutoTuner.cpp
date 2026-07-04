@@ -121,11 +121,40 @@ void AutoTuner::coarseScan(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) 
                     bestL = l; bestC = c; bestMode = m;
                 }
                 step++;
-                reportProgress((uint8_t)(step * 80 / totalSteps));   // 0-80% for coarse
+                reportProgress((uint8_t)(step * 70 / totalSteps));   // 0-70% for coarse
             }
         }
     }
     LOG_INFO("AutoTuner", "Coarse done: L=%u C=%u mode=%u RL=%.1fdB", bestL, bestC, bestMode, bestRL);
+}
+
+// ── Phase 2.5: Medium scan ───────────────────────────────────────────────────
+// Searches ±1 coarse step around the coarse optimum using step/8 granularity.
+// Bridges the gap between coarse step (64) and fine window (±4): without this,
+// the true optimum can be up to ±32 away — outside the fine tune reach.
+
+void AutoTuner::mediumScan(uint16_t& bestL, uint16_t& bestC, uint8_t mode) {
+    uint16_t medStepL = max((uint16_t)2, (uint16_t)(g_cfg.coarse_step_l / 8));
+    uint16_t medStepC = max((uint16_t)1, (uint16_t)(g_cfg.coarse_step_c / 4));
+    uint16_t lLo = (bestL >= g_cfg.coarse_step_l) ? bestL - g_cfg.coarse_step_l : 0;
+    uint16_t lHi = min((int)L_MAX, (int)bestL + g_cfg.coarse_step_l);
+    uint16_t cLo = (bestC >= g_cfg.coarse_step_c) ? bestC - g_cfg.coarse_step_c : 0;
+    uint16_t cHi = min((int)C_MAX, (int)bestC + g_cfg.coarse_step_c);
+
+    float bestRL = -999.0f;
+    I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
+
+    for (uint16_t c = cLo; c <= cHi; c += medStepC) {
+        for (uint16_t l = lLo; l <= lHi; l += medStepL) {
+            if (isAbortRequested()) return;
+            setLCAndWait(l, c, mode, 3);
+            xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
+            vTaskDelay(pdMS_TO_TICKS(15));
+            float rl = getRL();
+            if (rl > bestRL) { bestRL = rl; bestL = l; bestC = c; }
+        }
+    }
+    LOG_INFO("AutoTuner", "Medium done: L=%u C=%u mode=%u RL=%.1f dB", bestL, bestC, mode, bestRL);
 }
 
 // ── Phase 3: Fine-step ───────────────────────────────────────────────────────
@@ -222,6 +251,10 @@ bool AutoTuner::runTune(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
 
     // Phase 2
     coarseScan(bestL, bestC, bestMode);
+    if (isAbortRequested()) return false;
+
+    // Phase 2.5
+    mediumScan(bestL, bestC, bestMode);
     if (isAbortRequested()) return false;
 
     // Phase 3
