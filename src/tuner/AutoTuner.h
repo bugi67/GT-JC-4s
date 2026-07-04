@@ -24,6 +24,9 @@ private:
     // Phase 2: coarse scan over all L/C in step increments, all 3 modes
     static void coarseScan(uint16_t& L, uint16_t& C, uint8_t& mode);
 
+    // Phase 2.25: inter-L scan — fills L gaps (step/4 intervals) missed by coarse
+    static void interLScan(uint16_t& L, uint16_t& C, uint8_t& mode);
+
     // Phase 2.5: medium scan — ±1 coarse step around coarse optimum, step/8
     static void mediumScan(uint16_t& L, uint16_t& C, uint8_t mode);
 
