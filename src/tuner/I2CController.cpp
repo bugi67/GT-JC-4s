@@ -173,9 +173,9 @@ void I2CController::taskI2C(void* param) {
             } else if (cmd.cmd == I2CCmd::SAVE_PRESET) {
                 Preset p;
                 p.freq_kHz = cmd.freq_kHz;
-                p.L = cmd.L; p.C = cmd.C; p.mode = cmd.mode;
-                LOG_INFO("I2C", "SAVE_PRESET: freq=%u L=%u C=%u mode=%u count=%d",
-                         p.freq_kHz, p.L, p.C, p.mode, PresetStore::count());
+                p.L = cmd.L; p.C = cmd.C; p.mode = cmd.mode; p.swr = cmd.swr;
+                LOG_INFO("I2C", "SAVE_PRESET: freq=%u L=%u C=%u mode=%u swr=%.2f count=%d",
+                         p.freq_kHz, p.L, p.C, p.mode, p.swr, PresetStore::count());
                 if (!PresetStore::save(p)) {
                     LOG_ERROR("I2C", "SAVE_PRESET failed (count=%d max=%d)",
                               PresetStore::count(), PRESET_MAX_COUNT);

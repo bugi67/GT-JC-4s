@@ -373,7 +373,7 @@ void AutoTuner::taskAutoTuner(void* param) {
                 LOG_INFO("AutoTuner", "Saving preset at %u kHz (snapped from %u kHz)", freqSnapped, freq);
                 I2CCommand sc = {};
                 sc.cmd = I2CCmd::SAVE_PRESET;
-                sc.freq_kHz = freqSnapped; sc.L = L; sc.C = C; sc.mode = mode;
+                sc.freq_kHz = freqSnapped; sc.L = L; sc.C = C; sc.mode = mode; sc.swr = finalSWR;
                 xQueueSend(g_i2cCmdQueue, &sc, portMAX_DELAY);
             }
         }

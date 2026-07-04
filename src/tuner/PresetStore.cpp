@@ -52,6 +52,7 @@ void PresetStore::packPreset(const Preset& p, uint8_t* buf) {
     uint16_t c_mode = ((uint16_t)(p.C & 0x1FF) << 7) | (p.mode & 0x03);
     buf[4] = (c_mode >> 8) & 0xFF;
     buf[5] = c_mode & 0xFF;
+    buf[6] = (p.swr > 0.0f) ? (uint8_t)round(p.swr * 10.0f) : 0;
 }
 
 void PresetStore::unpackPreset(const uint8_t* buf, Preset& p) {
@@ -61,6 +62,7 @@ void PresetStore::unpackPreset(const uint8_t* buf, Preset& p) {
     p.C    = (c_mode >> 7) & 0x1FF;
     p.mode = c_mode & 0x03;
     if (p.mode == 0) p.mode = 1;
+    p.swr  = (buf[6] > 0) ? (float)buf[6] / 10.0f : 0.0f;
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -79,6 +81,11 @@ bool PresetStore::begin() {
         if (f == 0xFFFF) break;
         if (f == 0x0000 && buf[2] == 0 && buf[3] == 0 && buf[4] == 0 && buf[5] == 0) {
             LOG_WARN("PresetStore", "Slot %d all-zero, treating as end-of-list", i);
+            break;
+        }
+        // Reject entries with out-of-range frequency — likely old 6-byte format misread
+        if (f < 1800 || f > 30000) {
+            LOG_WARN("PresetStore", "Slot %d freq %u out of range, stopping (old format?)", i, f);
             break;
         }
         unpackPreset(buf, s_presets[s_count]);
