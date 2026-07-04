@@ -95,6 +95,12 @@ struct Candidate { uint16_t L, C; uint8_t mode; float RL; };
 static Candidate s_cands[3];
 static int       s_nCands;
 
+// Best L=0 result from coarse scan — tracked separately from top-3 so we always
+// explore the small-L region at medium resolution (catches narrow optima like
+// L=15 whose coarse neighbours score too poorly to enter the top-3).
+struct L0Cand { uint16_t C; uint8_t mode; float RL; };
+static L0Cand s_l0cand;
+
 // Add a point to the top-3 diverse candidate list.
 // "Diverse" means each candidate must be at least 1 coarse step away from all
 // others in BOTH L and C — so we explore different regions, not just refine one.
@@ -120,6 +126,7 @@ void AutoTuner::coarseScan(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) 
     float bestRL = -999.0f;
     I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
     s_nCands = 0;
+    s_l0cand = {0, 1, -999.0f};
 
     uint16_t lMax, cMax;
     getBandLimits(stateGet(&TunerState::freq_kHz), lMax, cMax);
@@ -145,6 +152,7 @@ void AutoTuner::coarseScan(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) 
                 float rl = getRL();
                 if (rl > bestRL) { bestRL = rl; bestL = l; bestC = c; bestMode = m; }
                 addCandidate(l, c, m, rl);
+                if (l == 0 && rl > s_l0cand.RL) s_l0cand = {c, m, rl};
                 step++;
                 reportProgress((uint8_t)(step * 70 / totalSteps));   // 0-70% for coarse
             }
@@ -278,13 +286,14 @@ bool AutoTuner::runTune(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
     coarseScan(bestL, bestC, bestMode);
     if (isAbortRequested()) return false;
 
-    // Phase 2.5 — medium scan from each top-3 coarse candidate; keep overall best
-    // Ensures narrow optima missed by coarse (e.g. L=0, C=87) are still found.
+    // Phase 2.5 — medium scan from each top-3 coarse candidate + forced L=0 scan.
+    // Forced L=0: even if L=0's coarse RL was too poor to enter top-3, its medium scan
+    // covers L=0..64 at step=8, so fine-tune can then reach narrow optima like L=15.
     {
         float overallRL = -999.0f;
         for (int ci = 0; ci < s_nCands; ci++) {
             uint16_t tL = s_cands[ci].L, tC = s_cands[ci].C; uint8_t tMode = s_cands[ci].mode;
-            LOG_INFO("AutoTuner", "Medium scan %d/3 from L=%u C=%u mode=%u", ci+1, tL, tC, tMode);
+            LOG_INFO("AutoTuner", "Medium scan %d/%d from L=%u C=%u mode=%u", ci+1, s_nCands, tL, tC, tMode);
             mediumScan(tL, tC, tMode);
             if (isAbortRequested()) return false;
             setLCAndWait(tL, tC, tMode, 5);
@@ -294,6 +303,26 @@ bool AutoTuner::runTune(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
             float rl = getRL();
             if (rl > overallRL) { overallRL = rl; bestL = tL; bestC = tC; bestMode = tMode; }
         }
+
+        // Forced L=0 exploration — always run unless L=0 is already a top-3 candidate.
+        bool l0InCands = false;
+        for (int ci = 0; ci < s_nCands; ci++) {
+            if (s_cands[ci].L == 0) { l0InCands = true; break; }
+        }
+        if (!l0InCands && s_l0cand.RL > -999.0f) {
+            uint16_t tL = 0, tC = s_l0cand.C; uint8_t tMode = s_l0cand.mode;
+            LOG_INFO("AutoTuner", "Medium scan (L=0 forced) from C=%u mode=%u", tC, tMode);
+            mediumScan(tL, tC, tMode);
+            if (isAbortRequested()) return false;
+            setLCAndWait(tL, tC, tMode, 5);
+            I2CCommand mCmd3 = {I2CCmd::READ_SWR, 0, 0, 0};
+            xQueueSend(g_i2cCmdQueue, &mCmd3, portMAX_DELAY);
+            vTaskDelay(pdMS_TO_TICKS(20));
+            float rl = getRL();
+            if (rl > overallRL) { overallRL = rl; bestL = tL; bestC = tC; bestMode = tMode; }
+            LOG_INFO("AutoTuner", "Medium L=0 forced: L=%u C=%u mode=%u RL=%.1f dB", tL, tC, tMode, rl);
+        }
+
         LOG_INFO("AutoTuner", "Medium best: L=%u C=%u mode=%u RL=%.1f dB", bestL, bestC, bestMode, overallRL);
     }
     if (isAbortRequested()) return false;
