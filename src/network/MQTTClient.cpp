@@ -4,6 +4,7 @@
 #include "../logger/Logger.h"
 #include "../state.h"
 #include "../tuner/I2CController.h"
+#include "../tuner/PresetStore.h"
 #include <WiFi.h>
 
 static WiFiClient   s_wifiClient;
@@ -35,8 +36,20 @@ void MQTTClient::onMessage(char* topic, byte* payload, unsigned int len) {
         cmd = {I2CCmd::SET_LC, g_state.L, g_state.C, mode};
         sendCmd = true;
     } else if (strcmp(topic, MQTT_SUB_FREQ) == 0) {
-        StateLock lock;
-        g_state.freq_kHz = (uint16_t)atoi(val);
+        uint16_t newFreq = (uint16_t)atoi(val);
+        { StateLock lock; g_state.freq_kHz = newFreq; }
+        // Auto-apply preset when entering a new 20 kHz segment (RAM cache, no Wire)
+        static uint16_t lastSeg = 0xFFFF;
+        uint16_t seg = (newFreq / 20) * 20;
+        if (newFreq > 0 && seg != lastSeg) {
+            lastSeg = seg;
+            Preset p;
+            if (PresetStore::findBest(newFreq, p) && (p.freq_kHz / 20) * 20 == seg) {
+                LOG_INFO("MQTT", "New seg %u kHz: applying preset L=%u C=%u mode=%u", seg, p.L, p.C, p.mode);
+                cmd = {I2CCmd::SET_LC, p.L, p.C, p.mode};
+                sendCmd = true;
+            }
+        }
     } else if (strcmp(topic, MQTT_SUB_TUNE) == 0) {
         if (strcmp(val, "1") == 0) {
             xSemaphoreGive(g_tuneStartSem);
