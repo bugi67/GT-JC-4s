@@ -112,15 +112,26 @@ bool PresetStore::findBest(uint16_t freq_kHz, Preset& out) {
 }
 
 bool PresetStore::save(const Preset& p) {
+    // Delete all existing entries in the same 20 kHz segment before inserting.
+    // Handles both same-frequency overwrites and old exact-frequency entries.
+    uint16_t seg = (p.freq_kHz / 20) * 20;
+    bool found = true;
+    while (found) {
+        found = false;
+        for (int i = 0; i < s_count; i++) {
+            if ((s_presets[i].freq_kHz / 20) * 20 == seg) {
+                LOG_INFO("PresetStore", "Removing segment duplicate freq=%u (seg=%u)", s_presets[i].freq_kHz, seg);
+                deleteByFreq(s_presets[i].freq_kHz);
+                found = true;
+                break;  // restart scan — indices shifted after delete
+            }
+        }
+    }
+
     if (s_count >= PRESET_MAX_COUNT) return false;
 
     int insertAt = s_count;
     for (int i = 0; i < s_count; i++) {
-        if (s_presets[i].freq_kHz == p.freq_kHz) {
-            insertAt = i;
-            s_count--;   // will be re-incremented below (overwrite, net count stays same)
-            break;
-        }
         if (s_presets[i].freq_kHz > p.freq_kHz) {
             insertAt = i;
             break;
