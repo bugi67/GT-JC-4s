@@ -88,11 +88,38 @@ static void getBandLimits(uint16_t freq_kHz, uint16_t& lMax, uint16_t& cMax) {
     lMax = L_MAX; cMax = C_MAX;  // default: full range
 }
 
+// ── Coarse candidate tracking ────────────────────────────────────────────────
+
+struct Candidate { uint16_t L, C; uint8_t mode; float RL; };
+
+static Candidate s_cands[3];
+static int       s_nCands;
+
+// Add a point to the top-3 diverse candidate list.
+// "Diverse" means each candidate must be at least 1 coarse step away from all
+// others in BOTH L and C — so we explore different regions, not just refine one.
+static void addCandidate(uint16_t L, uint16_t C, uint8_t mode, float rl) {
+    for (int i = 0; i < s_nCands; i++) {
+        bool nearL = (uint16_t)abs((int)L - (int)s_cands[i].L) < g_cfg.coarse_step_l;
+        bool nearC = (uint16_t)abs((int)C - (int)s_cands[i].C) < g_cfg.coarse_step_c;
+        if (nearL && nearC) {
+            if (rl > s_cands[i].RL) s_cands[i] = {L, C, mode, rl};
+            return;
+        }
+    }
+    if (s_nCands < 3) { s_cands[s_nCands++] = {L, C, mode, rl}; return; }
+    // Replace weakest if this is better
+    int weak = 0;
+    for (int i = 1; i < 3; i++) if (s_cands[i].RL < s_cands[weak].RL) weak = i;
+    if (rl > s_cands[weak].RL) s_cands[weak] = {L, C, mode, rl};
+}
+
 // ── Phase 2: Coarse scan ─────────────────────────────────────────────────────
 
 void AutoTuner::coarseScan(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
     float bestRL = -999.0f;
     I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
+    s_nCands = 0;
 
     uint16_t lMax, cMax;
     getBandLimits(stateGet(&TunerState::freq_kHz), lMax, cMax);
@@ -116,10 +143,8 @@ void AutoTuner::coarseScan(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) 
                 vTaskDelay(pdMS_TO_TICKS(15));
 
                 float rl = getRL();
-                if (rl > bestRL) {
-                    bestRL = rl;
-                    bestL = l; bestC = c; bestMode = m;
-                }
+                if (rl > bestRL) { bestRL = rl; bestL = l; bestC = c; bestMode = m; }
+                addCandidate(l, c, m, rl);
                 step++;
                 reportProgress((uint8_t)(step * 70 / totalSteps));   // 0-70% for coarse
             }
@@ -253,8 +278,24 @@ bool AutoTuner::runTune(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
     coarseScan(bestL, bestC, bestMode);
     if (isAbortRequested()) return false;
 
-    // Phase 2.5
-    mediumScan(bestL, bestC, bestMode);
+    // Phase 2.5 — medium scan from each top-3 coarse candidate; keep overall best
+    // Ensures narrow optima missed by coarse (e.g. L=0, C=87) are still found.
+    {
+        float overallRL = -999.0f;
+        for (int ci = 0; ci < s_nCands; ci++) {
+            uint16_t tL = s_cands[ci].L, tC = s_cands[ci].C; uint8_t tMode = s_cands[ci].mode;
+            LOG_INFO("AutoTuner", "Medium scan %d/3 from L=%u C=%u mode=%u", ci+1, tL, tC, tMode);
+            mediumScan(tL, tC, tMode);
+            if (isAbortRequested()) return false;
+            setLCAndWait(tL, tC, tMode, 5);
+            I2CCommand mCmd2 = {I2CCmd::READ_SWR, 0, 0, 0};
+            xQueueSend(g_i2cCmdQueue, &mCmd2, portMAX_DELAY);
+            vTaskDelay(pdMS_TO_TICKS(20));
+            float rl = getRL();
+            if (rl > overallRL) { overallRL = rl; bestL = tL; bestC = tC; bestMode = tMode; }
+        }
+        LOG_INFO("AutoTuner", "Medium best: L=%u C=%u mode=%u RL=%.1f dB", bestL, bestC, bestMode, overallRL);
+    }
     if (isAbortRequested()) return false;
 
     // Phase 3
