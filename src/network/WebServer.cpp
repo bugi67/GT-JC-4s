@@ -25,6 +25,7 @@ uint8_t               WebUI::s_sseLastMode  = 0xFF;
 bool                  WebUI::s_sseLastKTune = false;
 int8_t                WebUI::s_sseLastRssi  = 0;
 unsigned long         WebUI::s_sseLastHb   = 0;
+uint32_t              WebUI::s_sseLastLogSeq = 0;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -254,6 +255,7 @@ void WebUI::handleSSE() {
     s_sseLastKTune = false;
     s_sseLastRssi  = 0;
     s_sseLastHb   = 0;
+    s_sseLastLogSeq = 0;  // deliver recent ring-buffer history to new client
     s_sseClient.print("HTTP/1.1 200 OK\r\n"
                       "Content-Type: text/event-stream\r\n"
                       "Cache-Control: no-cache\r\n"
@@ -314,6 +316,18 @@ void WebUI::pushSSE() {
             swr, rl, L, C, mode, kTune ? 1 : 0, freq, rssi,
             (int)ts, tp, (int)os, op);
         s_sseClient.print(buf);
+    }
+
+    // Push new log entries as named SSE events (up to 16 per cycle)
+    {
+        Logger::LogEntry logBuf[16];
+        int logCount = 0;
+        s_sseLastLogSeq = Logger::getEntries(s_sseLastLogSeq, logBuf, 16, &logCount);
+        for (int i = 0; i < logCount; i++) {
+            s_sseClient.print("event: log\ndata: ");
+            s_sseClient.print(logBuf[i].text);
+            s_sseClient.print("\n\n");
+        }
     }
 }
 
