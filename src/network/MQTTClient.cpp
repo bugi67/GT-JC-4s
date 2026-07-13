@@ -164,6 +164,7 @@ void MQTTClient::publishStatus() {
     s_mqtt.publish(MQTT_PUB_FB_MODE, buf);
     snprintf(buf, sizeof(buf), "%.3f", calcLuH(L));
     s_mqtt.publish(MQTT_PUB_L_UH, buf);
+    s_mqtt.loop();   // let TCP flush before derived-value burst
     snprintf(buf, sizeof(buf), "%.1f", calcCpF(C));
     s_mqtt.publish(MQTT_PUB_C_PF, buf);
     snprintf(buf, sizeof(buf), "%.2f", swr);
@@ -189,6 +190,7 @@ void MQTTClient::taskMQTT(void* param) {
     static uint16_t lastC     = 0xFFFF;
     static uint8_t  lastMode  = 0;
     static bool     lastKTune = false;
+    static uint16_t lastFreq  = 0xFFFF;
 
     for (;;) {
         if (g_cfg.mqtt_enabled && strlen(g_cfg.mqtt_server) > 0) {
@@ -197,12 +199,18 @@ void MQTTClient::taskMQTT(void* param) {
                 if (s_mqtt.connected()) {
                     s_mqtt.loop();
 
-                    // Drain and publish pending log lines
+                    // Drain and publish pending log lines (max 8 per cycle to
+                    // avoid flooding the TCP send buffer before status publishes)
                     {
                         LogLine logEntry;
-                        while (s_logQueue && xQueueReceive(s_logQueue, &logEntry, 0) == pdTRUE)
+                        int limit = 8;
+                        while (limit-- > 0 && s_logQueue && xQueueReceive(s_logQueue, &logEntry, 0) == pdTRUE)
                             s_mqtt.publish(MQTT_PUB_LOG, logEntry.text);
                     }
+
+                    // Let PubSubClient flush outgoing TCP data and process any
+                    // incoming packets before the status publish burst below.
+                    s_mqtt.loop();
 
                     // Publish RSSI every 10 s
                     if (millis() - lastRssi > RSSI_INTERVAL_MS) {
@@ -226,15 +234,16 @@ void MQTTClient::taskMQTT(void* param) {
                         if (ts == TunerState::TuneState::DONE) publishStatus();
                     }
 
-                    // Publish feedback whenever L/C/mode/kTune changes
-                    uint16_t curL, curC; uint8_t curMode; bool curKTune;
+                    // Publish feedback whenever L/C/mode/kTune/freq changes
+                    uint16_t curL, curC, curFreq; uint8_t curMode; bool curKTune;
                     {
                         StateLock lock;
                         curL = g_state.L; curC = g_state.C;
                         curMode = g_state.mode; curKTune = g_state.kTune;
+                        curFreq = g_state.freq_kHz;
                     }
-                    if (curL != lastL || curC != lastC || curMode != lastMode || curKTune != lastKTune) {
-                        lastL = curL; lastC = curC; lastMode = curMode; lastKTune = curKTune;
+                    if (curL != lastL || curC != lastC || curMode != lastMode || curKTune != lastKTune || curFreq != lastFreq) {
+                        lastL = curL; lastC = curC; lastMode = curMode; lastKTune = curKTune; lastFreq = curFreq;
                         publishStatus();
                     }
                 }
