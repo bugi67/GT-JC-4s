@@ -100,11 +100,6 @@ void setup() {
     if (!I2CController::init()) {
         LOG_WARN("System", "Some I2C devices not found – check wiring");
     }
-    // PCF8574 boots with all ports HIGH (= all relays energised at max L/C).
-    // Write L=0, C=0, mode=C@TRX before taskI2C starts so the hardware is in
-    // a known safe state from the very first moment.
-    I2CController::setLC(0, 0, 1);
-    LOG_INFO("System", "Hardware reset: L=0 C=0 mode=C@TRX");
 
     // 7. Presets
     PresetStore::begin();

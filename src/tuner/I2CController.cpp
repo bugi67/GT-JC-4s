@@ -140,6 +140,20 @@ SWRResult I2CController::measureSWR(uint8_t minVfwd) {
 
 void I2CController::taskI2C(void* param) {
     (void)param;
+
+    // PCF8574 expanders boot with all ports HIGH → all relay coils energised.
+    // Reset everything to L=0 C=0 mode=C@TRX as the first thing taskI2C does.
+    // Running this here (not in setup()) avoids any Wire timing issues and keeps
+    // all I2C writes in the one task that owns the bus.
+    setLC(0, 0, 1);
+    {
+        StateLock lock;
+        g_state.L    = 0;
+        g_state.C    = 0;
+        g_state.mode = 1;
+    }
+    LOG_INFO("I2C", "Hardware initialised: L=0 C=0 mode=C@TRX");
+
     I2CCommand cmd;
     for (;;) {
         if (xQueueReceive(g_i2cCmdQueue, &cmd, pdMS_TO_TICKS(250)) == pdTRUE) {
