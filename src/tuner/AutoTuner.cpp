@@ -245,11 +245,11 @@ void AutoTuner::fineTune(uint16_t& bestL, uint16_t& bestC, uint8_t mode, bool ve
         if (newL != bestL) { bestL = newL; improved = true; }
 
         if (verbose) {
-            Serial.printf("\r\n Iter %d / L-Sweep (C=%u):\r\n", iter + 1, bestC);
-            Serial.printf("   L   |   C   |   SWR  |    RL    |\r\n");
-            Serial.printf(" ------+-------+--------+----------+\r\n");
+            LOG_INFO("AutoTuner", "Iter %d / L-Sweep (C=%u):", iter + 1, bestC);
+            LOG_INFO("AutoTuner", "  L   |   C   |   SWR  |    RL    |");
+            LOG_INFO("AutoTuner", "------+-------+--------+----------+");
             for (int i = 0; i < nL; i++)
-                Serial.printf(" %5u | %5u | %6.2f | %6.1f dB |%s\r\n",
+                LOG_INFO("AutoTuner", "%5u | %5u | %6.2f | %6.1f dB |%s",
                     steps[i].L, steps[i].C, steps[i].swr, steps[i].rl,
                     steps[i].L == bestL ? " <--" : "");
         }
@@ -280,11 +280,11 @@ void AutoTuner::fineTune(uint16_t& bestL, uint16_t& bestC, uint8_t mode, bool ve
         if (newC != bestC) { bestC = newC; improved = true; }
 
         if (verbose) {
-            Serial.printf("\r\n Iter %d / C-Sweep (L=%u):\r\n", iter + 1, bestL);
-            Serial.printf("   L   |   C   |   SWR  |    RL    |\r\n");
-            Serial.printf(" ------+-------+--------+----------+\r\n");
+            LOG_INFO("AutoTuner", "Iter %d / C-Sweep (L=%u):", iter + 1, bestL);
+            LOG_INFO("AutoTuner", "  L   |   C   |   SWR  |    RL    |");
+            LOG_INFO("AutoTuner", "------+-------+--------+----------+");
             for (int i = 0; i < nC; i++)
-                Serial.printf(" %5u | %5u | %6.2f | %6.1f dB |%s\r\n",
+                LOG_INFO("AutoTuner", "%5u | %5u | %6.2f | %6.1f dB |%s",
                     steps[i].L, steps[i].C, steps[i].swr, steps[i].rl,
                     steps[i].C == bestC ? " <--" : "");
         }
@@ -446,17 +446,17 @@ void AutoTuner::taskAutoTuner(void* param) {
         if (fineOnly) {
             static const char* modeNames[] = { "", "C@TRX", "C@ANT", "No C" };
             const char* modeStr = (mode >= 1 && mode <= 3) ? modeNames[mode] : "?";
-            Serial.printf("\r\n+----------------------+------------+\r\n");
-            Serial.printf("| Fine-Tune Result     |            |\r\n");
-            Serial.printf("+----------------------+------------+\r\n");
-            Serial.printf("| L (raw)              | %10u |\r\n", L);
-            Serial.printf("| L                    | %7.3f uH |\r\n", calcLuH(L));
-            Serial.printf("| C (raw)              | %10u |\r\n", C);
-            Serial.printf("| C                    | %7.1f pF |\r\n", calcCpF(C));
-            Serial.printf("| Mode                 | %10s |\r\n", modeStr);
-            Serial.printf("| SWR                  | %10.2f |\r\n", finalSWR);
-            Serial.printf("| Return Loss          | %7.1f dB |\r\n", finalRL);
-            Serial.printf("+----------------------+------------+\r\n\r\n");
+            LOG_INFO("AutoTuner", "+----------------------+------------+");
+            LOG_INFO("AutoTuner", "| Fine-Tune Result     |            |");
+            LOG_INFO("AutoTuner", "+----------------------+------------+");
+            LOG_INFO("AutoTuner", "| L (raw)              | %10u |", L);
+            LOG_INFO("AutoTuner", "| L                    | %7.3f uH |", calcLuH(L));
+            LOG_INFO("AutoTuner", "| C (raw)              | %10u |", C);
+            LOG_INFO("AutoTuner", "| C                    | %7.1f pF |", calcCpF(C));
+            LOG_INFO("AutoTuner", "| Mode                 | %10s |", modeStr);
+            LOG_INFO("AutoTuner", "| SWR                  | %10.2f |", finalSWR);
+            LOG_INFO("AutoTuner", "| Return Loss          | %7.1f dB |", finalRL);
+            LOG_INFO("AutoTuner", "+----------------------+------------+");
         }
     }
 }

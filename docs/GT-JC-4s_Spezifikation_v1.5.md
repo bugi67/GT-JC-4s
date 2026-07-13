@@ -1,4 +1,4 @@
-# GT-JC-4s — Projektspezifikation v1.8
+# GT-JC-4s — Projektspezifikation v1.9
 **Antennenkoppler-Steuerung mit AutoTuner**
 Datum: 2026-07-13 | Autor: HB9CZF | Status: Implementiert / In Test
 
@@ -161,7 +161,7 @@ MQTT-Broker liefern beim Subscribe sofort alle retained Messages zurück. Dies w
 **Fine-Tune-Modus (standalone):**
 - Auslösung über Web-GUI Button „Fine-Tune" (`/api/finetune`) oder MQTT `JC-4s/finetune = 1`
 - Startet `fineTune()` ab aktuellem L/C/Mode (kein Coarse-Scan)
-- Gibt bei laufendem Tune **ausführliche Schritt-Tabellen** auf der seriellen Schnittstelle aus (L-Sweep und C-Sweep pro Iteration):
+- Gibt bei laufendem Tune **ausführliche Schritt-Tabellen** via `LOG_INFO` aus (L-Sweep und C-Sweep pro Iteration) — erscheinen damit sowohl auf Serial als auch auf `JC-4s/log`:
 
 ```
  Iter 2 / L-Sweep (C=29):
@@ -173,7 +173,7 @@ MQTT-Broker liefern beim Subscribe sofort alle retained Messages zurück. Dies w
     22 |    29 |   1.00 |    inf dB |
 ```
 
-- Nach Abschluss: Zusammenfassung auf Serial und Preset automatisch gespeichert
+- Nach Abschluss: Ergebnis-Tabelle via `LOG_INFO` (Serial + `JC-4s/log`) und Preset automatisch gespeichert
 
 **Fine-Tune-Ergebnis-Tabelle (Serial):**
 ```
@@ -618,7 +618,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v1.8 — Implementiert
+## 12. Status v1.9 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -664,3 +664,4 @@ GT-JC-4s/
 | 40 | Web-GUI Sidebar: API-Link-Button öffnet `/api/status` in neuem Tab | ✅ |
 | 41 | Web-GUI Sidebar: Breite 88 px (war 72 px) — „MAINTENANCE" vollständig lesbar | ✅ |
 | 42 | Web-GUI Sidebar: Klick auf Brand-Logo „GT / JC-4s" navigiert zum Dashboard | ✅ |
+| 43 | Fine-Tune: Sweep-Tabellen und Ergebnis-Box via LOG_INFO (→ Serial + JC-4s/log) | ✅ |
