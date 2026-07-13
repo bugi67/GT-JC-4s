@@ -416,6 +416,7 @@ bool WebUI::begin() {
     s_server.on("/ota/local/fs",     HTTP_POST,   [](){}, otaLocalFS);
     s_server.on("/ota/github/check", HTTP_GET,    otaGitHubCheck);
     s_server.on("/ota/github/install", HTTP_POST, otaGitHubInstall);
+    s_server.on("/favicon.ico", HTTP_GET, []() { s_server.send(204); });
     // Preset delete by freq: /api/presets/{freq}
     s_server.onNotFound([]() {
         if (s_server.uri().startsWith("/api/presets/") && s_server.method() == HTTP_DELETE) {
