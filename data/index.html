@@ -214,6 +214,27 @@ tr:hover td { background: var(--hover); }
 .sp-meta-row { display: flex; justify-content: space-between; font-size: .75rem; }
 .sp-meta-lbl { color: var(--text2); }
 
+/* ── Log viewer ──────────────────────────────────────────────────────────── */
+.log-area {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-family: 'Menlo', 'Cascadia Code', 'Fira Mono', 'Courier New', monospace;
+  font-size: .72rem;
+  line-height: 1.55;
+  height: calc(100vh - 210px);
+  min-height: 200px;
+  overflow-y: auto;
+  color: var(--text3);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.log-line { display: block; }
+.log-line.lvl-error { color: var(--swr-bad); }
+.log-line.lvl-warn  { color: var(--swr-warn); }
+.log-line.lvl-debug { color: var(--text2); }
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .shell { grid-template-columns: 72px 1fr; }
@@ -275,6 +296,13 @@ tr:hover td { background: var(--hover); }
         <path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/>
       </svg>
       <span data-i18n="nav_maint">Maintenance</span>
+    </button>
+
+    <button class="snav-btn" data-page="logs">
+      <svg class="snav-icon" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M4 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H4zm1.2 5.7 3 2.8-3 2.8a.75.75 0 1 0 1.1 1l3.4-3.2a.75.75 0 0 0 0-1.1L6.3 8.7a.75.75 0 0 0-1.1 1zM11 15.25a.75.75 0 0 1 .75-.75H18a.75.75 0 0 1 0 1.5h-6.25a.75.75 0 0 1-.75-.75z"/>
+      </svg>
+      <span data-i18n="nav_logs">Logs</span>
     </button>
   </nav>
 
@@ -490,6 +518,26 @@ tr:hover td { background: var(--hover); }
     </div>
   </div>
 
+  <!-- Logs -->
+  <div class="page" id="page-logs">
+    <div class="page-hdr">
+      <h1 class="page-title" data-i18n="nav_logs">Logs</h1>
+    </div>
+    <div class="card" style="padding-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="card-lbl" style="margin:0" data-i18n="title_logs">Serial Output</div>
+        <div style="display:flex;align-items:center;gap:14px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--text2);cursor:pointer">
+            <input type="checkbox" id="log-autoscroll" checked>
+            <span data-i18n="lbl_autoscroll">Auto-scroll</span>
+          </label>
+          <button class="btn btn-ghost" id="btn-log-clear" style="padding:4px 12px;font-size:.78rem" data-i18n="btn_log_clear">Clear</button>
+        </div>
+      </div>
+      <div id="log-area" class="log-area"></div>
+    </div>
+  </div>
+
 </main>
 
 <!-- ── Stats panel ──────────────────────────────────────────────────────── -->
@@ -604,6 +652,8 @@ const STR = {
     sp_tune_status: 'Tune Status', sp_ota: 'OTA',
     tune_idle: 'Idle', lbl_fw: 'Firmware', lbl_time: 'Time',
     lbl_ntp_server: 'NTP Server',
+    nav_logs: 'Logs', title_logs: 'Serial Output',
+    lbl_autoscroll: 'Auto-scroll', btn_log_clear: 'Clear',
   },
   de: {
     nav_dashboard: 'Dashboard', nav_presets: 'Presets',
@@ -642,6 +692,8 @@ const STR = {
     sp_tune_status: 'Abstimmung', sp_ota: 'OTA',
     tune_idle: 'Bereit', lbl_fw: 'Firmware', lbl_time: 'Uhrzeit',
     lbl_ntp_server: 'NTP-Server',
+    nav_logs: 'Logs', title_logs: 'Serielle Ausgabe',
+    lbl_autoscroll: 'Auto-Scroll', btn_log_clear: 'Löschen',
   }
 };
 
@@ -716,6 +768,7 @@ function showPage(name) {
   document.querySelector(`.snav-btn[data-page="${name}"]`).classList.add('active');
   if (name === 'presets')  loadPresets();
   if (name === 'settings') loadConfig();
+  if (name === 'logs' && !logPaused) { const a = $('log-area'); a.scrollTop = a.scrollHeight; }
 }
 
 document.querySelectorAll('.snav-btn[data-page]').forEach(b => {
@@ -833,10 +886,34 @@ $('btn-ktune').addEventListener('click', () => {
   post('/api/ktune', { ktune: next });
 });
 
+// ── Log viewer ────────────────────────────────────────────────────────────────
+let logPaused = false;
+
+function appendLog(line) {
+  const area = $('log-area');
+  const div = document.createElement('div');
+  const lvl = line.includes('[ERROR]') ? 'lvl-error'
+             : line.includes('[WARN ]') ? 'lvl-warn'
+             : line.includes('[DEBUG]') ? 'lvl-debug'
+             : '';
+  div.className = 'log-line' + (lvl ? ' ' + lvl : '');
+  div.textContent = line;
+  area.appendChild(div);
+  while (area.children.length > 500) area.removeChild(area.firstChild);
+  if (!logPaused) area.scrollTop = area.scrollHeight;
+}
+
+$('btn-log-clear').addEventListener('click', () => { $('log-area').innerHTML = ''; });
+$('log-autoscroll').addEventListener('change', e => {
+  logPaused = !e.target.checked;
+  if (!logPaused) $('log-area').scrollTop = $('log-area').scrollHeight;
+});
+
 // ── SSE ───────────────────────────────────────────────────────────────────────
 function startSSE() {
   const src = new EventSource('/events');
   src.onmessage = e => { Object.assign(state, JSON.parse(e.data)); syncDashboard(); };
+  src.addEventListener('log', e => appendLog(e.data));
   src.onerror   = () => setTimeout(startSSE, 2000);
 }
 
