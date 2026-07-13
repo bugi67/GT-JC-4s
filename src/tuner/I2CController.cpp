@@ -142,9 +142,19 @@ void I2CController::taskI2C(void* param) {
     (void)param;
 
     // PCF8574 expanders boot with all ports HIGH → all relay coils energised.
-    // Reset everything to L=0 C=0 mode=C@TRX as the first thing taskI2C does.
-    // Running this here (not in setup()) avoids any Wire timing issues and keeps
-    // all I2C writes in the one task that owns the bus.
+    // Wait 500 ms so chips and transistors are fully settled before the first write.
+    vTaskDelay(pdMS_TO_TICKS(500));
+
+    LOG_INFO("I2C", "Relay init: writing all-zero to 0x38..0x3B");
+    // Step 1: drive every relay coil off (all bits 0).
+    // 0x3B bit 2 is an INPUT pin — keep it HIGH (0x04).
+    writePCF8574(ADDR_PCF8574_C_LO, 0x00);   // C bits 0-7  → all off
+    writePCF8574(ADDR_PCF8574_C_HI, 0x00);   // C bit 8 + mode bits → all off
+    writePCF8574(ADDR_PCF8574_L_HI, 0x00);   // L bits 1-8  → all off
+    writePCF8574(ADDR_PCF8574_L_LO, 0x04);   // L bits 0,9,10 → off; input P2 → HIGH
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    // Step 2: apply correct mode bits for C@TRX (K1 + K9+K10 → ON in 0x39)
     setLC(0, 0, 1);
     {
         StateLock lock;
