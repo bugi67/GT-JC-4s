@@ -1,4 +1,4 @@
-# GT-JC-4s — Projektspezifikation v1.9
+# GT-JC-4s — Projektspezifikation v2.0
 **Antennenkoppler-Steuerung mit AutoTuner**
 Datum: 2026-07-13 | Autor: HB9CZF | Status: Implementiert / In Test
 
@@ -499,7 +499,8 @@ Alle Log-Nachrichten (die den konfigurierten Log-Level erreichen) werden zusätz
 - `Logger` stellt einen statischen Callback-Hook bereit (`Logger::setPublishHook(fn)`).
 - `MQTTClient::begin()` registriert `logHook()` als Callback und legt eine FreeRTOS-Queue an (Tiefe 16, je 200 Zeichen).
 - `logHook()` wird von `Logger::log()` nach dem Serial-Print aufgerufen (ausserhalb des Logger-Mutex), kopiert die Zeile in die Queue (trailing `\r\n` wird abgeschnitten). Bei voller Queue wird die Nachricht verworfen.
-- `taskMQTT` entleert die Queue in jedem 50-ms-Zyklus (nur wenn verbunden) und ruft `s_mqtt.publish(„JC-4s/log", ...)` auf.
+- `taskMQTT` entleert die Queue in jedem 50-ms-Zyklus (nur wenn verbunden) und ruft `s_mqtt.publish(„JC-4s/log", ...)` auf. Pro Zyklus werden **maximal 8 Einträge** verarbeitet, um den TCP-Sendepuffer nicht zu überlasten.
+- Nach dem Log-Drain wird `s_mqtt.loop()` aufgerufen, damit ausstehende TCP-Daten geflushd und eingehende Pakete verarbeitet werden, bevor der Status-Publish-Burst startet.
 - Nachrichten die vor dem ersten MQTT-Connect anfallen bleiben in der Queue (max. 16 Einträge) und werden nach Verbindungsaufbau publiziert.
 
 ---
@@ -618,7 +619,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v1.9 — Implementiert
+## 12. Status v2.0 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -665,3 +666,4 @@ GT-JC-4s/
 | 41 | Web-GUI Sidebar: Breite 88 px (war 72 px) — „MAINTENANCE" vollständig lesbar | ✅ |
 | 42 | Web-GUI Sidebar: Klick auf Brand-Logo „GT / JC-4s" navigiert zum Dashboard | ✅ |
 | 43 | Fine-Tune: Sweep-Tabellen und Ergebnis-Box via LOG_INFO (→ Serial + JC-4s/log) | ✅ |
+| 44 | MQTT publish-Robustheit: Log-Drain max. 8 Einträge/Zyklus; `s_mqtt.loop()` nach Log-Drain und innerhalb `publishStatus()` (zwischen L_uH und C_pF) — verhindert stille TCP-Drops bei publish()-Bursts | ✅ |
