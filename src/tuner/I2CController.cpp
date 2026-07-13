@@ -145,24 +145,57 @@ void I2CController::taskI2C(void* param) {
     // Wait 500 ms so chips and transistors are fully settled before the first write.
     vTaskDelay(pdMS_TO_TICKS(500));
 
-    LOG_INFO("I2C", "Relay init: writing all-zero to 0x38..0x3B");
-    // Step 1: drive every relay coil off (all bits 0).
-    // 0x3B bit 2 is an INPUT pin — keep it HIGH (0x04).
-    writePCF8574(ADDR_PCF8574_C_LO, 0x00);   // C bits 0-7  → all off
-    writePCF8574(ADDR_PCF8574_C_HI, 0x00);   // C bit 8 + mode bits → all off
-    writePCF8574(ADDR_PCF8574_L_HI, 0x00);   // L bits 1-8  → all off
-    writePCF8574(ADDR_PCF8574_L_LO, 0x04);   // L bits 0,9,10 → off; input P2 → HIGH
-    vTaskDelay(pdMS_TO_TICKS(50));
+    // De-energise relays one chip at a time with 150 ms gaps.
+    // Switching all 27 coils simultaneously droops the PCF8574 supply below
+    // their ~1.5 V reset threshold, causing them to latch back to all-HIGH.
+    LOG_INFO("I2C", "Relay init step 1/4: L_LO (0x3B)");
+    writePCF8574(ADDR_PCF8574_L_LO, 0x04);   // L0, L9, L10 off; input P2 HIGH
+    vTaskDelay(pdMS_TO_TICKS(150));
 
-    // Step 2: apply correct mode bits for C@TRX (K1 + K9+K10 → ON in 0x39)
-    setLC(0, 0, 1);
+    LOG_INFO("I2C", "Relay init step 2/4: L_HI (0x3A)");
+    writePCF8574(ADDR_PCF8574_L_HI, 0x00);   // L1-L8 off
+    vTaskDelay(pdMS_TO_TICKS(150));
+
+    LOG_INFO("I2C", "Relay init step 3/4: C_LO (0x38)");
+    writePCF8574(ADDR_PCF8574_C_LO, 0x00);   // C bits 0-7 off
+    vTaskDelay(pdMS_TO_TICKS(150));
+
+    LOG_INFO("I2C", "Relay init step 4/4: C_HI (0x39)");
+    writePCF8574(ADDR_PCF8574_C_HI, 0x06);   // C bit 8 off; K1 + K9/K10 on (C@TRX mode)
+    vTaskDelay(pdMS_TO_TICKS(150));
+
     {
         StateLock lock;
         g_state.L    = 0;
         g_state.C    = 0;
         g_state.mode = 1;
     }
-    LOG_INFO("I2C", "Hardware initialised: L=0 C=0 mode=C@TRX");
+    // Read back each chip to verify the writes actually changed the output register.
+    // If the PCF8574 returns 0xFF instead of the written value, it reset (VCC droop).
+    auto readPCF = [](uint8_t addr) -> uint8_t {
+        Wire.requestFrom(addr, (uint8_t)1);
+        return Wire.available() ? Wire.read() : 0xEE;
+    };
+    uint8_t rb3B = readPCF(ADDR_PCF8574_L_LO);
+    uint8_t rb3A = readPCF(ADDR_PCF8574_L_HI);
+    uint8_t rb38 = readPCF(ADDR_PCF8574_C_LO);
+    uint8_t rb39 = readPCF(ADDR_PCF8574_C_HI);
+    LOG_INFO("I2C", "PCF8574 readback: 0x3B=0x%02X(exp 0x04) 0x3A=0x%02X(exp 0x00) 0x38=0x%02X(exp 0x00) 0x39=0x%02X(exp 0x06)",
+             rb3B, rb3A, rb38, rb39);
+    bool initOk = (rb3B == 0x04) && (rb3A == 0x00) && (rb38 == 0x00) && (rb39 == 0x06);
+    LOG_INFO("I2C", "Hardware initialised: L=0 C=0 mode=C@TRX %s", initOk ? "[OK]" : "[MISMATCH - chips may have reset!]");
+
+    // Drain any commands that accumulated in the queue during the ~600 ms init
+    // window (typically MQTT retained-message replays). Without this flush they
+    // would immediately override the freshly zeroed relay state.
+    {
+        I2CCommand discard;
+        int n = 0;
+        while (xQueueReceive(g_i2cCmdQueue, &discard, 0) == pdTRUE) n++;
+        if (n) LOG_INFO("I2C", "Flushed %d stale pre-init command(s)", n);
+    }
+    g_relayInitDone = true;
+    LOG_INFO("I2C", "Ready — accepting relay commands");
 
     I2CCommand cmd;
     for (;;) {

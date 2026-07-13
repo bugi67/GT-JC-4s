@@ -43,7 +43,6 @@ private:
     static bool                  s_sseLastKTune;
     static int8_t                s_sseLastRssi;
     static unsigned long         s_sseLastHb;
-    static uint32_t              s_sseLastLogSeq;
 
     // OTA routes
     static void otaLocalFW();
