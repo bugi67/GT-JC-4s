@@ -10,6 +10,21 @@
 static WiFiClient   s_wifiClient;
 static PubSubClient s_mqtt(s_wifiClient);
 
+// ── MQTT log queue ────────────────────────────────────────────────────────────
+struct LogLine { char text[200]; };
+static QueueHandle_t s_logQueue = nullptr;
+
+static void logHook(const char* line) {
+    if (!s_logQueue) return;
+    LogLine entry;
+    strncpy(entry.text, line, sizeof(entry.text) - 1);
+    entry.text[sizeof(entry.text) - 1] = '\0';
+    int len = (int)strlen(entry.text);
+    while (len > 0 && (entry.text[len-1] == '\r' || entry.text[len-1] == '\n'))
+        entry.text[--len] = '\0';
+    xQueueSend(s_logQueue, &entry, 0);  // drop if full
+}
+
 void MQTTClient::onMessage(char* topic, byte* payload, unsigned int len) {
     char val[32] = {};
     if (len >= sizeof(val)) len = sizeof(val) - 1;
@@ -17,21 +32,36 @@ void MQTTClient::onMessage(char* topic, byte* payload, unsigned int len) {
 
     LOG_DEBUG("MQTT", "RX [%s] = '%s'", topic, val);
 
+    // Discard relay commands that arrive before the hardware init is done OR
+    // within 2 s of an MQTT (re)connect. Retained messages are delivered by
+    // the broker within milliseconds of subscribe; 2 s is enough to let them
+    // pass silently while still accepting live commands from the user.
+    bool initPending   = !g_relayInitDone;
+    bool retainWindow  = (millis() - g_mqttConnectedAt) < 2000UL;
+    if (initPending || retainWindow) {
+        LOG_INFO("MQTT", "Discarding [%s]='%s' (%s)", topic, val,
+                 initPending ? "init pending" : "retained-msg window");
+        return;
+    }
+
     I2CCommand cmd;
     bool sendCmd = false;
 
     if (strcmp(topic, MQTT_SUB_L) == 0) {
         uint16_t L = (uint16_t)constrain(atoi(val), 0, L_MAX);
+        LOG_INFO("MQTT", "SET L=%u (via MQTT)", L);
         StateLock lock;
         cmd = {I2CCmd::SET_LC, L, g_state.C, g_state.mode};
         sendCmd = true;
     } else if (strcmp(topic, MQTT_SUB_C) == 0) {
         uint16_t C = (uint16_t)constrain(atoi(val), 0, C_MAX);
+        LOG_INFO("MQTT", "SET C=%u (via MQTT)", C);
         StateLock lock;
         cmd = {I2CCmd::SET_LC, g_state.L, C, g_state.mode};
         sendCmd = true;
     } else if (strcmp(topic, MQTT_SUB_MODE) == 0) {
         uint8_t mode = (uint8_t)constrain(atoi(val), 1, 3);
+        LOG_INFO("MQTT", "SET mode=%u (via MQTT)", mode);
         StateLock lock;
         cmd = {I2CCmd::SET_LC, g_state.L, g_state.C, mode};
         sendCmd = true;
@@ -93,6 +123,7 @@ bool MQTTClient::ensureConnected() {
     char clientId[24];
     snprintf(clientId, sizeof(clientId), "GT-JC-4s-%06llX", (uint64_t)ESP.getEfuseMac() & 0xFFFFFF);
     if (s_mqtt.connect(clientId)) {
+        g_mqttConnectedAt = millis();   // retained-message suppression window starts now
         LOG_INFO("MQTT", "Connected as %s", clientId);
         subscribe();
         s_mqtt.publish(MQTT_PUB_ID, FIRMWARE_VERSION);
@@ -109,6 +140,8 @@ bool MQTTClient::begin() {
     }
     s_mqtt.setServer(g_cfg.mqtt_server, g_cfg.mqtt_port);
     s_mqtt.setCallback(onMessage);
+    s_logQueue = xQueueCreate(16, sizeof(LogLine));
+    Logger::setPublishHook(logHook);
     return true;
 }
 
@@ -163,6 +196,13 @@ void MQTTClient::taskMQTT(void* param) {
                 ensureConnected();
                 if (s_mqtt.connected()) {
                     s_mqtt.loop();
+
+                    // Drain and publish pending log lines
+                    {
+                        LogLine logEntry;
+                        while (s_logQueue && xQueueReceive(s_logQueue, &logEntry, 0) == pdTRUE)
+                            s_mqtt.publish(MQTT_PUB_LOG, logEntry.text);
+                    }
 
                     // Publish RSSI every 10 s
                     if (millis() - lastRssi > RSSI_INTERVAL_MS) {

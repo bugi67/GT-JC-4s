@@ -9,20 +9,12 @@ public:
     static void setLevel(LogLevel level);
     static LogLevel getLevel();
     static void log(LogLevel level, const char* module, const char* fmt, ...);
-
-    // Ring buffer for SSE log streaming
-    static constexpr int LOG_RING_CAPACITY = 64;
-    struct LogEntry {
-        uint32_t seq;
-        char     text[120];
-    };
-    // Returns entries with seq in (afterSeq, tail], up to maxCount.
-    // Returns the new afterSeq (caller passes this back next time).
-    static uint32_t getEntries(uint32_t afterSeq, LogEntry* buf, int maxCount, int* outCount);
+    static void setPublishHook(void (*fn)(const char*));
 
 private:
     static LogLevel          s_level;
     static SemaphoreHandle_t s_mutex;
+    static void            (*s_publishHook)(const char*);
 };
 
 // ── Compile-time minimum level ────────────────────────────────────────────────

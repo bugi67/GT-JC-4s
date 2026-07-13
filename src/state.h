@@ -59,6 +59,13 @@ struct TunerState {
 
 // ── Global state + synchronisation primitives ────────────────────────────────
 extern TunerState          g_state;
+// Set true by taskI2C after the relay init + queue flush complete.
+// MQTT onMessage checks this before applying any SET_LC command.
+extern volatile bool          g_relayInitDone;
+// Timestamp (millis()) of the most recent MQTT connect. Retained messages
+// arrive within a few ms of subscribe; live commands arrive later.
+// onMessage discards SET_LC commands for 2 s after each connect.
+extern volatile unsigned long g_mqttConnectedAt;
 extern SemaphoreHandle_t   g_stateMutex;
 extern SemaphoreHandle_t   g_tuneStartSem;
 extern SemaphoreHandle_t   g_fineTuneStartSem;

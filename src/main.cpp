@@ -15,6 +15,8 @@
 
 // ── Global state ──────────────────────────────────────────────────────────────
 TunerState        g_state;
+volatile bool          g_relayInitDone    = false;
+volatile unsigned long g_mqttConnectedAt  = 0;
 SemaphoreHandle_t g_stateMutex    = nullptr;
 SemaphoreHandle_t g_tuneStartSem     = nullptr;
 SemaphoreHandle_t g_fineTuneStartSem = nullptr;
