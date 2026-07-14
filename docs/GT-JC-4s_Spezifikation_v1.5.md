@@ -1,4 +1,4 @@
-# GT-JC-4s — Projektspezifikation v2.0
+# GT-JC-4s — Projektspezifikation v2.1
 **Antennenkoppler-Steuerung mit AutoTuner**
 Datum: 2026-07-13 | Autor: HB9CZF | Status: Implementiert / In Test
 
@@ -80,7 +80,9 @@ Web-GUI   ──HTTP──►  ESP32-C3            PCF8591 ADC   ◄──  SWR-
 | `JC-4s/C_pF` | ► PUB | Berechneter C-Wert in pF |
 | `JC-4s/swr` | ► PUB | Aktuelles SWR |
 | `JC-4s/rssi` | ► PUB | WiFi-Signalstärke (alle 10 s) |
-| `JC-4s/id` | ► PUB | Firmware-Version |
+| `JC-4s/id` | ► PUB | Firmware-Version (retained) |
+| `JC-4s/ip` | ► PUB | IP-Adresse (retained, bei jedem MQTT-Connect) |
+| `JC-4s/mac` | ► PUB | MAC-Adresse (retained, bei jedem MQTT-Connect) |
 | `JC-4s/log` | ► PUB | Log-Nachrichten (alle Levels ≥ konfiguriertem Level) |
 
 **MQTT-Feedback-Logik:** Da die I2C-Ausführung asynchron via Queue läuft, erkennt `taskMQTT` Zustandsänderungen von L/C/mode/kTune in g_state und publiziert dann `publishStatus()`. Ebenso bei Tune-Status-Wechsel.
@@ -619,7 +621,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v2.0 — Implementiert
+## 12. Status v2.1 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -667,3 +669,4 @@ GT-JC-4s/
 | 42 | Web-GUI Sidebar: Klick auf Brand-Logo „GT / JC-4s" navigiert zum Dashboard | ✅ |
 | 43 | Fine-Tune: Sweep-Tabellen und Ergebnis-Box via LOG_INFO (→ Serial + JC-4s/log) | ✅ |
 | 44 | MQTT publish-Robustheit: Log-Drain max. 8 Einträge/Zyklus; `s_mqtt.loop()` nach Log-Drain und innerhalb `publishStatus()` (zwischen L_uH und C_pF) — verhindert stille TCP-Drops bei publish()-Bursts | ✅ |
+| 45 | MQTT: IP-Adresse (`JC-4s/ip`) und MAC-Adresse (`JC-4s/mac`) bei jedem MQTT-Connect als retained Message publiziert — erleichtert Gerät-Identifikation nach DHCP-Wechsel oder Netzwerkwechsel | ✅ |
