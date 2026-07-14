@@ -70,6 +70,8 @@ static const float C_PF[] = {
 #define MQTT_SUB_KTUNE         MQTT_ROOT "/ktune"
 #define MQTT_PUB_FB_KTUNE      MQTT_ROOT "/feedback/ktune"
 #define MQTT_PUB_LOG           MQTT_ROOT "/log"
+#define MQTT_PUB_IP            MQTT_ROOT "/ip"
+#define MQTT_PUB_MAC           MQTT_ROOT "/mac"
 
 // ── Network ───────────────────────────────────────────────────────────────────
 #define AP_SSID                "GT-JC-4s-Setup"
