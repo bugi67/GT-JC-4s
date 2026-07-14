@@ -126,7 +126,14 @@ bool MQTTClient::ensureConnected() {
         g_mqttConnectedAt = millis();   // retained-message suppression window starts now
         LOG_INFO("MQTT", "Connected as %s", clientId);
         subscribe();
-        s_mqtt.publish(MQTT_PUB_ID, FIRMWARE_VERSION);
+        s_mqtt.publish(MQTT_PUB_ID, FIRMWARE_VERSION, true);
+        {
+            String ip  = WiFi.localIP().toString();
+            String mac = WiFi.macAddress();
+            s_mqtt.publish(MQTT_PUB_IP,  ip.c_str(),  true);
+            s_mqtt.publish(MQTT_PUB_MAC, mac.c_str(), true);
+            LOG_INFO("MQTT", "Published IP=%s MAC=%s", ip.c_str(), mac.c_str());
+        }
         return true;
     }
     LOG_WARN("MQTT", "Connect failed state=%d", s_mqtt.state());
