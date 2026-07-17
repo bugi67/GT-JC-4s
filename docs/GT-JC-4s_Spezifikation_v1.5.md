@@ -1,4 +1,4 @@
-# GT-JC-4s — Projektspezifikation v2.1
+# GT-JC-4s — Projektspezifikation v2.2
 **Antennenkoppler-Steuerung mit AutoTuner**
 Datum: 2026-07-13 | Autor: HB9CZF | Status: Implementiert / In Test
 
@@ -621,7 +621,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v2.1 — Implementiert
+## 12. Status v2.2 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -670,3 +670,4 @@ GT-JC-4s/
 | 43 | Fine-Tune: Sweep-Tabellen und Ergebnis-Box via LOG_INFO (→ Serial + JC-4s/log) | ✅ |
 | 44 | MQTT publish-Robustheit: Log-Drain max. 8 Einträge/Zyklus; `s_mqtt.loop()` nach Log-Drain und innerhalb `publishStatus()` (zwischen L_uH und C_pF) — verhindert stille TCP-Drops bei publish()-Bursts | ✅ |
 | 45 | MQTT: IP-Adresse (`JC-4s/ip`) und MAC-Adresse (`JC-4s/mac`) bei jedem MQTT-Connect als retained Message publiziert — erleichtert Gerät-Identifikation nach DHCP-Wechsel oder Netzwerkwechsel | ✅ |
+| 46 | Web-GUI: API-Sidebar-Link verwendet relativen Pfad `/api/status` statt hardcodierter IP — funktioniert korrekt nach DHCP-Adresswechsel | ✅ |
