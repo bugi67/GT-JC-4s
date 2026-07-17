@@ -1,4 +1,4 @@
-# GT-JC-4s — Projektspezifikation v2.2
+# GT-JC-4s — Projektspezifikation v2.3
 **Antennenkoppler-Steuerung mit AutoTuner**
 Datum: 2026-07-13 | Autor: HB9CZF | Status: Implementiert / In Test
 
@@ -555,7 +555,7 @@ board_build.partitions = custom_partitions.csv
 board_build.filesystem = littlefs
 
 build_flags =
-    -D FIRMWARE_VERSION=\"1.1.0\"
+    -D FIRMWARE_VERSION=\"1.2.0\"
     -D LOG_LEVEL_DEFAULT=2
     -D CONFIG_FREERTOS_UNICORE=1
     -D ARDUINO_USB_CDC_ON_BOOT=1
@@ -621,7 +621,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v2.2 — Implementiert
+## 12. Status v2.3 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -671,3 +671,4 @@ GT-JC-4s/
 | 44 | MQTT publish-Robustheit: Log-Drain max. 8 Einträge/Zyklus; `s_mqtt.loop()` nach Log-Drain und innerhalb `publishStatus()` (zwischen L_uH und C_pF) — verhindert stille TCP-Drops bei publish()-Bursts | ✅ |
 | 45 | MQTT: IP-Adresse (`JC-4s/ip`) und MAC-Adresse (`JC-4s/mac`) bei jedem MQTT-Connect als retained Message publiziert — erleichtert Gerät-Identifikation nach DHCP-Wechsel oder Netzwerkwechsel | ✅ |
 | 46 | Web-GUI: API-Sidebar-Link verwendet relativen Pfad `/api/status` statt hardcodierter IP — funktioniert korrekt nach DHCP-Adresswechsel | ✅ |
+| 47 | Firmware-Version 1.2.0 als GitHub-Release `v1.2.0` publiziert (Items 44–46 enthalten); OTA-Update via Web-GUI Maintenance oder `POST /ota/github/install` | ✅ |
