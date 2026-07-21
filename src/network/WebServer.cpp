@@ -58,6 +58,7 @@ String WebUI::buildStatusJSON() {
     doc["otaProgress"] = g_state.otaProgress;
     doc["rssi"]        = g_state.rssi;
     doc["fwVersion"]   = g_state.fwVersion;
+    doc["wifiSsid"]    = g_cfg.wifi_ssid;
     time_t now = time(nullptr);
     doc["ntpSynced"]   = (now > 1000000000UL);
     if (now > 1000000000UL) {

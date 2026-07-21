@@ -191,7 +191,8 @@ void MQTTClient::publishTuneStatus(const char* status, uint8_t progress) {
 
 void MQTTClient::taskMQTT(void* param) {
     (void)param;
-    static unsigned long lastRssi = 0;
+    static unsigned long lastRssi        = 0;  // g_state update (always)
+    static unsigned long lastRssiPublish = 0;  // MQTT publish (when connected)
     static TunerState::TuneState lastTuneState = TunerState::TuneState::IDLE;
     static uint16_t lastL     = 0xFFFF;
     static uint16_t lastC     = 0xFFFF;
@@ -200,6 +201,13 @@ void MQTTClient::taskMQTT(void* param) {
     static uint16_t lastFreq  = 0xFFFF;
 
     for (;;) {
+        // Always update g_state.rssi so the Web-GUI shows it even without MQTT
+        if (WiFi.status() == WL_CONNECTED && millis() - lastRssi > RSSI_INTERVAL_MS) {
+            lastRssi = millis();
+            StateLock lock;
+            g_state.rssi = (int8_t)WiFi.RSSI();
+        }
+
         if (g_cfg.mqtt_enabled && strlen(g_cfg.mqtt_server) > 0) {
             if (WiFi.status() == WL_CONNECTED) {
                 ensureConnected();
@@ -220,15 +228,11 @@ void MQTTClient::taskMQTT(void* param) {
                     s_mqtt.loop();
 
                     // Publish RSSI every 10 s
-                    if (millis() - lastRssi > RSSI_INTERVAL_MS) {
-                        lastRssi = millis();
+                    if (millis() - lastRssiPublish > RSSI_INTERVAL_MS) {
+                        lastRssiPublish = millis();
                         char buf[8];
-                        snprintf(buf, sizeof(buf), "%d", WiFi.RSSI());
+                        snprintf(buf, sizeof(buf), "%d", stateGet(&TunerState::rssi));
                         s_mqtt.publish(MQTT_PUB_RSSI, buf);
-                        {
-                            StateLock lock;
-                            g_state.rssi = (int8_t)WiFi.RSSI();
-                        }
                     }
 
                     // Publish tune state changes

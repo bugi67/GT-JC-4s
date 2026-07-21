@@ -564,6 +564,10 @@ tr:hover td { background: var(--hover); }
       <span id="sp-rssi">—</span>
     </div>
     <div class="sp-meta-row">
+      <span class="sp-meta-lbl">SSID</span>
+      <span id="sp-ssid">—</span>
+    </div>
+    <div class="sp-meta-row">
       <span class="sp-meta-lbl" data-i18n="lbl_time">Time</span>
       <span id="sp-time">—</span>
     </div>
@@ -706,7 +710,7 @@ const state = {
   swr: 0, returnLoss: 0,
   tuneState: 0, tuneProgress: 0,
   otaState: 0,  otaProgress: 0,
-  rssi: 0, fwVersion: '?',
+  rssi: 0, fwVersion: '?', wifiSsid: '',
   ntpSynced: false, localTime: ''
 };
 let prevTuneState = -1;
@@ -758,6 +762,7 @@ function syncStats() {
   $('sp-c').textContent    = state.C;
   $('sp-fw').textContent   = state.fwVersion ? 'v' + state.fwVersion : '—';
   $('sp-rssi').textContent = state.rssi ? state.rssi + ' dBm' : '—';
+  $('sp-ssid').textContent = state.wifiSsid || '—';
   $('sp-time').textContent = state.ntpSynced && state.localTime ? state.localTime : '—';
 
   const tuning = state.tuneState === 1;
