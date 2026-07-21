@@ -9,6 +9,7 @@ public:
 
     static void publishStatus();   // publish L, C, mode, SWR, freq
     static void publishTuneStatus(const char* status, uint8_t progress = 0);
+    static bool isConnected();
 
 private:
     static void onMessage(char* topic, byte* payload, unsigned int len);

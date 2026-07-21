@@ -140,6 +140,8 @@ bool MQTTClient::ensureConnected() {
     return false;
 }
 
+bool MQTTClient::isConnected() { return s_mqtt.connected(); }
+
 bool MQTTClient::begin() {
     if (!g_cfg.mqtt_enabled || strlen(g_cfg.mqtt_server) == 0) {
         LOG_INFO("MQTT", "MQTT disabled or no server configured");

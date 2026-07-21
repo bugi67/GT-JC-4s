@@ -2,6 +2,7 @@
 #include "../config.h"
 #include <time.h>
 #include <WiFi.h>
+#include "MQTTClient.h"
 #include "../cfg/AppConfig.h"
 #include "../logger/Logger.h"
 #include "../state.h"
@@ -57,9 +58,10 @@ String WebUI::buildStatusJSON() {
     doc["tuneProgress"]= g_state.tuneProgress;
     doc["otaState"]    = (int)g_state.otaState;
     doc["otaProgress"] = g_state.otaProgress;
-    doc["rssi"]        = (int8_t)WiFi.RSSI();
-    doc["fwVersion"]   = g_state.fwVersion;
-    doc["wifiSsid"]    = g_cfg.wifi_ssid;
+    doc["rssi"]          = (int8_t)WiFi.RSSI();
+    doc["fwVersion"]     = g_state.fwVersion;
+    doc["wifiSsid"]      = g_cfg.wifi_ssid;
+    doc["mqttConnected"] = MQTTClient::isConnected();
     time_t now = time(nullptr);
     doc["ntpSynced"]   = (now > 1000000000UL);
     if (now > 1000000000UL) {
