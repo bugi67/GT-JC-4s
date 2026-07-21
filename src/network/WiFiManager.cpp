@@ -151,15 +151,25 @@ bool WiFiManager::begin() {
     }
 
     if (strlen(g_cfg.wifi_ssid) == 0) {
-        LOG_WARN("WiFi", "No credentials – starting setup AP");
-        startAP();
-        return false;
+        LOG_WARN("WiFi", "No credentials – trying fallback networks");
+    } else if (connectStation(g_cfg.wifi_ssid, g_cfg.wifi_pass)) {
+        return true;
     }
-    if (!connectStation(g_cfg.wifi_ssid, g_cfg.wifi_pass)) {
-        startAP();
-        return false;
+
+    static const struct { const char* ssid; const char* pass; } fallbacks[] = {
+        { WIFI_FALLBACK1_SSID, WIFI_FALLBACK1_PASS },
+        { WIFI_FALLBACK2_SSID, WIFI_FALLBACK2_PASS },
+    };
+    for (const auto& fb : fallbacks) {
+        if (connectStation(fb.ssid, fb.pass)) {
+            strlcpy(g_cfg.wifi_ssid, fb.ssid, sizeof(g_cfg.wifi_ssid));
+            strlcpy(g_cfg.wifi_pass, fb.pass, sizeof(g_cfg.wifi_pass));
+            return true;
+        }
     }
-    return true;
+
+    startAP();
+    return false;
 }
 
 bool WiFiManager::isAPMode()   { return s_apMode; }

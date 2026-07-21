@@ -76,6 +76,10 @@ static const float C_PF[] = {
 // ── Network ───────────────────────────────────────────────────────────────────
 #define AP_SSID                "GT-JC-4s-Setup"
 #define AP_PASS                ""              // open AP for first-time setup
+#define WIFI_FALLBACK1_SSID    ""
+#define WIFI_FALLBACK1_PASS    ""
+#define WIFI_FALLBACK2_SSID    ""
+#define WIFI_FALLBACK2_PASS    ""
 #define DEFAULT_MQTT_PORT      1883
 #define MQTT_RECONNECT_MS      5000
 #define RSSI_INTERVAL_MS       10000
