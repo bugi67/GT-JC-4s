@@ -1,4 +1,4 @@
-# GT-JC-4s — Projektspezifikation v2.3
+# GT-JC-4s — Projektspezifikation v2.4
 **Antennenkoppler-Steuerung mit AutoTuner**
 Datum: 2026-07-13 | Autor: HB9CZF | Status: Implementiert / In Test
 
@@ -457,9 +457,10 @@ WiFi-Credentials werden **zusätzlich** im NVS gespeichert. Dieser liegt auf ein
 | `pass` | String | WLAN Passwort |
 
 **Ladestrategie in `WiFiManager::begin()`:**
-1. NVS lesen → falls `ssid` nicht leer: in `g_cfg` übernehmen
-2. Fallback auf `g_cfg.wifi_ssid` (aus config.json)
-3. Falls leer: Captive Portal starten
+1. NVS lesen → falls `ssid` nicht leer: in `g_cfg` übernehmen und verbinden
+2. Fallback 1: `WIFI_FALLBACK1_SSID` / `WIFI_FALLBACK1_PASS` (`config.h`)
+3. Fallback 2: `WIFI_FALLBACK2_SSID` / `WIFI_FALLBACK2_PASS` (`config.h`)
+4. Falls alle scheitern: Captive Portal starten
 
 ### 6.3 Captive Portal (WiFi-Erstkonfiguration)
 Bei fehlendem SSID startet `WiFiManager::runCaptivePortal()`:
@@ -621,7 +622,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v2.3 — Implementiert
+## 12. Status v2.4 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -672,3 +673,4 @@ GT-JC-4s/
 | 45 | MQTT: IP-Adresse (`JC-4s/ip`) und MAC-Adresse (`JC-4s/mac`) bei jedem MQTT-Connect als retained Message publiziert — erleichtert Gerät-Identifikation nach DHCP-Wechsel oder Netzwerkwechsel | ✅ |
 | 46 | Web-GUI: API-Sidebar-Link verwendet relativen Pfad `/api/status` statt hardcodierter IP — funktioniert korrekt nach DHCP-Adresswechsel | ✅ |
 | 47 | Firmware-Version 1.2.0 als GitHub-Release `v1.2.0` publiziert (Items 44–46 enthalten); OTA-Update via Web-GUI Maintenance oder `POST /ota/github/install` | ✅ |
+| 48 | WiFi: Hardcodierte Fallback-Netzwerke (`<SSID1>`, `<SSID2>`) werden nach NVS-Credentials versucht; erst danach Captive Portal — ermöglicht Betrieb an bekannten Standorten ohne Konfiguration | ✅ |
