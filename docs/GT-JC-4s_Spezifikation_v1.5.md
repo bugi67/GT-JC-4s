@@ -1,6 +1,6 @@
-# GT-JC-4s — Projektspezifikation v2.5
+# GT-JC-4s — Projektspezifikation v2.6
 **Antennenkoppler-Steuerung mit AutoTuner**
-Datum: 2026-07-13 | Autor: HB9CZF | Status: Implementiert / In Test
+Datum: 2026-07-21 | Autor: HB9CZF | Status: Implementiert / In Test
 
 ---
 
@@ -622,7 +622,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v2.5 — Implementiert
+## 12. Status v2.6 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -676,3 +676,4 @@ GT-JC-4s/
 | 48 | WiFi: Hardcodierte Fallback-Netzwerke (`<SSID1>`, `<SSID2>`) werden nach NVS-Credentials versucht; erst danach Captive Portal — ermöglicht Betrieb an bekannten Standorten ohne Konfiguration | ✅ |
 | 49 | Web-GUI Stats-Panel: WLAN-SSID (`wifiSsid` aus `/api/status`) zwischen RSSI und Uhrzeit angezeigt | ✅ |
 | 50 | Fix: RSSI-Update (`g_state.rssi`) erfolgt unabhängig vom MQTT-Verbindungsstatus; MQTT-Publish hat eigenen Timer — RSSI wird im Web-GUI auch ohne erreichbaren MQTT-Broker korrekt angezeigt | ✅ |
+| 51 | Web-GUI Stats-Panel: MQTT-Broker-Verbindungsstatus (`mqttConnected` aus `/api/status`) als `● Online` (grün) / `○ Offline` (orange) angezeigt; `MQTTClient::isConnected()` exponiert `s_mqtt.connected()` an WebServer | ✅ |
