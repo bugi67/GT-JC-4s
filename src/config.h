@@ -76,7 +76,7 @@ static const float C_PF[] = {
 // ── Network ───────────────────────────────────────────────────────────────────
 #define AP_SSID                "GT-JC-4s-Setup"
 #define AP_PASS                ""              // open AP for first-time setup
-#define WIFI_FALLBACK1_SSID    ""
+#define WIFI_FALLBACK1_SSID    ""   // set locally, do not commit credentials
 #define WIFI_FALLBACK1_PASS    ""
 #define WIFI_FALLBACK2_SSID    ""
 #define WIFI_FALLBACK2_PASS    ""
