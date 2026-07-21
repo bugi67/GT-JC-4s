@@ -1,6 +1,7 @@
 #include "WebServer.h"
 #include "../config.h"
 #include <time.h>
+#include <WiFi.h>
 #include "../cfg/AppConfig.h"
 #include "../logger/Logger.h"
 #include "../state.h"
@@ -56,7 +57,7 @@ String WebUI::buildStatusJSON() {
     doc["tuneProgress"]= g_state.tuneProgress;
     doc["otaState"]    = (int)g_state.otaState;
     doc["otaProgress"] = g_state.otaProgress;
-    doc["rssi"]        = g_state.rssi;
+    doc["rssi"]        = (int8_t)WiFi.RSSI();
     doc["fwVersion"]   = g_state.fwVersion;
     doc["wifiSsid"]    = g_cfg.wifi_ssid;
     time_t now = time(nullptr);
@@ -277,7 +278,7 @@ void WebUI::pushSSE() {
         mode  = g_state.mode;
         kTune = g_state.kTune;
         freq  = g_state.freq_kHz;
-        rssi  = g_state.rssi;
+        rssi  = (int8_t)WiFi.RSSI();
         ts    = g_state.tuneState;
         tp    = g_state.tuneProgress;
         os    = g_state.otaState;
