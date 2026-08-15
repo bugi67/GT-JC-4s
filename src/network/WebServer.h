@@ -27,6 +27,8 @@ private:
     static void apiPresetsDeleteAll();
     static void apiConfigGet();
     static void apiConfigPost();
+    static void apiWifiGet();
+    static void apiWifiPost();
     static void apiReboot();
 
     // SSE — non-blocking: handleSSE() stores client, pushSSE() runs in task loop

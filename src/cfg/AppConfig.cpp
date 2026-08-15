@@ -8,8 +8,6 @@ AppConfig g_cfg;
 #define CONFIG_PATH "/config.json"
 
 static void applyDefaults(AppConfig& c) {
-    c.wifi_ssid[0]    = '\0';
-    c.wifi_pass[0]    = '\0';
     c.mqtt_server[0]  = '\0';
     c.mqtt_port       = DEFAULT_MQTT_PORT;
     c.mqtt_enabled    = true;
@@ -40,8 +38,6 @@ bool Config::load() {
         return false;
     }
 
-    strlcpy(g_cfg.wifi_ssid,        doc["wifi_ssid"]        | "", sizeof(g_cfg.wifi_ssid));
-    strlcpy(g_cfg.wifi_pass,        doc["wifi_pass"]        | "", sizeof(g_cfg.wifi_pass));
     strlcpy(g_cfg.mqtt_server,      doc["mqtt_server"]      | "", sizeof(g_cfg.mqtt_server));
     g_cfg.mqtt_port      = doc["mqtt_port"]      | DEFAULT_MQTT_PORT;
     g_cfg.mqtt_enabled   = doc["mqtt_enabled"]   | true;
@@ -61,8 +57,6 @@ bool Config::load() {
 bool Config::save() {
     StaticJsonDocument<1024> doc;
 
-    doc["wifi_ssid"]        = g_cfg.wifi_ssid;
-    doc["wifi_pass"]        = g_cfg.wifi_pass;
     doc["mqtt_server"]      = g_cfg.mqtt_server;
     doc["mqtt_port"]        = g_cfg.mqtt_port;
     doc["mqtt_enabled"]     = g_cfg.mqtt_enabled;

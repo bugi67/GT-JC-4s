@@ -76,10 +76,14 @@ static const float C_PF[] = {
 // ── Network ───────────────────────────────────────────────────────────────────
 #define AP_SSID                "GT-JC-4s-Setup"
 #define AP_PASS                ""              // open AP for first-time setup
-#define WIFI_FALLBACK1_SSID    ""   // set locally, do not commit credentials
-#define WIFI_FALLBACK1_PASS    ""
-#define WIFI_FALLBACK2_SSID    ""
-#define WIFI_FALLBACK2_PASS    ""
+
+// One-time seed values written to /wifi.json on first boot if the file is absent.
+// After that, wifi.json is the sole source of truth (editable via Web-GUI / captive portal).
+// Set locally before flashing; do not commit credentials.
+#define WIFI_SEED1_SSID        ""
+#define WIFI_SEED1_PASS        ""
+#define WIFI_SEED2_SSID        ""
+#define WIFI_SEED2_PASS        ""
 #define DEFAULT_MQTT_PORT      1883
 #define MQTT_RECONNECT_MS      5000
 #define RSSI_INTERVAL_MS       10000

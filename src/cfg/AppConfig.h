@@ -3,8 +3,6 @@
 #include "../config.h"
 
 struct AppConfig {
-    char     wifi_ssid[64];
-    char     wifi_pass[64];
     char     mqtt_server[64];
     uint16_t mqtt_port;
     bool     mqtt_enabled;

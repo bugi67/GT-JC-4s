@@ -380,16 +380,92 @@ tr:hover td { background: var(--hover); }
     <div class="page-hdr">
       <h1 class="page-title" data-i18n="nav_settings">Settings</h1>
     </div>
+    <!-- Wi-Fi Network 1 -->
     <div class="card">
-      <div class="card-lbl">Wi-Fi</div>
+      <div class="card-lbl" data-i18n="lbl_wifi_net1">Wi-Fi Network 1</div>
       <div class="form-group">
         <label data-i18n="lbl_ssid">SSID</label>
-        <input type="text"     id="cfg-wifi-ssid" autocomplete="off">
+        <input type="text" id="cfg-wifi0-ssid" autocomplete="off">
       </div>
       <div class="form-group">
         <label data-i18n="lbl_pass">Password</label>
-        <input type="password" id="cfg-wifi-pass" autocomplete="new-password">
+        <input type="password" id="cfg-wifi0-pass" autocomplete="new-password">
       </div>
+      <div class="toggle-row">
+        <span data-i18n="lbl_static_ip">Static IP</span>
+        <label class="toggle">
+          <input type="checkbox" id="cfg-wifi0-static" onchange="toggleStaticFields(0)">
+          <span class="tog-track"></span>
+        </label>
+      </div>
+      <div id="cfg-wifi0-static-fields" style="display:none">
+        <div class="form-2col">
+          <div class="form-group">
+            <label data-i18n="lbl_ip_addr">IP Address</label>
+            <input type="text" id="cfg-wifi0-ip" placeholder="192.168.0.50">
+          </div>
+          <div class="form-group">
+            <label data-i18n="lbl_subnet">Subnet</label>
+            <input type="text" id="cfg-wifi0-mask" placeholder="255.255.255.0">
+          </div>
+        </div>
+        <div class="form-2col">
+          <div class="form-group">
+            <label data-i18n="lbl_gateway">Gateway</label>
+            <input type="text" id="cfg-wifi0-gw" placeholder="192.168.0.1">
+          </div>
+          <div class="form-group">
+            <label data-i18n="lbl_dns">DNS</label>
+            <input type="text" id="cfg-wifi0-dns" placeholder="192.168.0.1">
+          </div>
+        </div>
+      </div>
+      <div class="status-line" id="cfg-wifi0-status"></div>
+      <button class="btn btn-primary" onclick="saveWifi(0)" data-i18n="btn_save_net1">Save Network 1</button>
+    </div>
+
+    <!-- Wi-Fi Network 2 -->
+    <div class="card">
+      <div class="card-lbl" data-i18n="lbl_wifi_net2">Wi-Fi Network 2</div>
+      <div class="form-group">
+        <label data-i18n="lbl_ssid">SSID</label>
+        <input type="text" id="cfg-wifi1-ssid" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label data-i18n="lbl_pass">Password</label>
+        <input type="password" id="cfg-wifi1-pass" autocomplete="new-password">
+      </div>
+      <div class="toggle-row">
+        <span data-i18n="lbl_static_ip">Static IP</span>
+        <label class="toggle">
+          <input type="checkbox" id="cfg-wifi1-static" onchange="toggleStaticFields(1)">
+          <span class="tog-track"></span>
+        </label>
+      </div>
+      <div id="cfg-wifi1-static-fields" style="display:none">
+        <div class="form-2col">
+          <div class="form-group">
+            <label data-i18n="lbl_ip_addr">IP Address</label>
+            <input type="text" id="cfg-wifi1-ip" placeholder="192.168.0.51">
+          </div>
+          <div class="form-group">
+            <label data-i18n="lbl_subnet">Subnet</label>
+            <input type="text" id="cfg-wifi1-mask" placeholder="255.255.255.0">
+          </div>
+        </div>
+        <div class="form-2col">
+          <div class="form-group">
+            <label data-i18n="lbl_gateway">Gateway</label>
+            <input type="text" id="cfg-wifi1-gw" placeholder="192.168.0.1">
+          </div>
+          <div class="form-group">
+            <label data-i18n="lbl_dns">DNS</label>
+            <input type="text" id="cfg-wifi1-dns" placeholder="192.168.0.1">
+          </div>
+        </div>
+      </div>
+      <div class="status-line" id="cfg-wifi1-status"></div>
+      <button class="btn btn-primary" onclick="saveWifi(1)" data-i18n="btn_save_net2">Save Network 2</button>
     </div>
     <div class="card">
       <div class="card-lbl">MQTT</div>
@@ -600,6 +676,10 @@ const STR = {
     confirm_del_all:    'Delete all presets?',
     lbl_ssid: 'SSID', lbl_pass: 'Password',
     ph_pass: '(leave empty to keep current)', ph_ssid: 'Network name',
+    lbl_wifi_net1: 'Wi-Fi Network 1', lbl_wifi_net2: 'Wi-Fi Network 2',
+    lbl_static_ip: 'Static IP', lbl_ip_addr: 'IP Address',
+    lbl_subnet: 'Subnet', lbl_gateway: 'Gateway', lbl_dns: 'DNS',
+    btn_save_net1: 'Save Network 1', btn_save_net2: 'Save Network 2',
     ph_mqtt: '192.168.1.x', ph_url: 'https://github.com/…/release.json',
     lbl_mqtt_srv: 'Server', lbl_mqtt_port: 'Port', lbl_mqtt_en: 'Enabled',
     lbl_threshold: 'Return Loss threshold [dB]', lbl_tx_level: 'Min Vfwd (TX detect)',
@@ -638,6 +718,10 @@ const STR = {
     confirm_del_all:    'Alle Presets löschen?',
     lbl_ssid: 'SSID', lbl_pass: 'Passwort',
     ph_pass: '(leer = unverändert)', ph_ssid: 'Netzwerk-Name',
+    lbl_wifi_net1: 'WLAN Netzwerk 1', lbl_wifi_net2: 'WLAN Netzwerk 2',
+    lbl_static_ip: 'Statische IP', lbl_ip_addr: 'IP-Adresse',
+    lbl_subnet: 'Subnetz', lbl_gateway: 'Gateway', lbl_dns: 'DNS',
+    btn_save_net1: 'Netzwerk 1 speichern', btn_save_net2: 'Netzwerk 2 speichern',
     ph_mqtt: '192.168.1.x', ph_url: 'https://github.com/…/release.json',
     lbl_mqtt_srv: 'Server', lbl_mqtt_port: 'Port', lbl_mqtt_en: 'Aktiviert',
     lbl_threshold: 'Rückflussdämpfung Schwellwert [dB]', lbl_tx_level: 'Min. Vfwd (TX-Erkennung)',
@@ -679,7 +763,8 @@ function applyI18n() {
     el.textContent = t(el.dataset.i18n);
   });
   const ph = {
-    'cfg-wifi-ssid': 'ph_ssid', 'cfg-wifi-pass': 'ph_pass',
+    'cfg-wifi0-ssid': 'ph_ssid', 'cfg-wifi0-pass': 'ph_pass',
+    'cfg-wifi1-ssid': 'ph_ssid', 'cfg-wifi1-pass': 'ph_pass',
     'cfg-mqtt-server': 'ph_mqtt', 'cfg-ota-url': 'ph_url',
   };
   Object.entries(ph).forEach(([id, key]) => {
@@ -735,7 +820,7 @@ function showPage(name) {
   $('page-' + name).classList.add('active');
   document.querySelector(`.snav-btn[data-page="${name}"]`).classList.add('active');
   if (name === 'presets')  loadPresets();
-  if (name === 'settings') loadConfig();
+  if (name === 'settings') { loadConfig(); loadWifi(); }
 }
 
 document.querySelectorAll('.snav-btn[data-page]').forEach(b => {
@@ -916,11 +1001,55 @@ $('btn-delete-all').addEventListener('click', async () => {
   loadPresets();
 });
 
+// ── Wi-Fi network config ──────────────────────────────────────────────────────
+async function loadWifi() {
+  try {
+    const d = await fetch('/api/wifi').then(r => r.json());
+    [[d.n0, 0], [d.n1, 1]].forEach(([net, idx]) => {
+      if (!net) return;
+      $(`cfg-wifi${idx}-ssid`).value   = net.ssid   ?? '';
+      $(`cfg-wifi${idx}-static`).checked = net.static ?? false;
+      $(`cfg-wifi${idx}-ip`).value     = net.ip     ?? '';
+      $(`cfg-wifi${idx}-mask`).value   = net.mask   ?? '';
+      $(`cfg-wifi${idx}-gw`).value     = net.gw     ?? '';
+      $(`cfg-wifi${idx}-dns`).value    = net.dns    ?? '';
+      toggleStaticFields(idx);
+    });
+  } catch(e) {}
+}
+
+function toggleStaticFields(idx) {
+  const show = $(`cfg-wifi${idx}-static`).checked;
+  $(`cfg-wifi${idx}-static-fields`).style.display = show ? '' : 'none';
+}
+
+async function saveWifi(idx) {
+  const st = $(`cfg-wifi${idx}-status`);
+  const pass = $(`cfg-wifi${idx}-pass`).value;
+  const body = {
+    ssid:   $(`cfg-wifi${idx}-ssid`).value,
+    static: $(`cfg-wifi${idx}-static`).checked,
+    ip:     $(`cfg-wifi${idx}-ip`).value,
+    mask:   $(`cfg-wifi${idx}-mask`).value,
+    gw:     $(`cfg-wifi${idx}-gw`).value,
+    dns:    $(`cfg-wifi${idx}-dns`).value,
+  };
+  if (pass) body.pass = pass;
+  try {
+    const d = await post(`/api/wifi/${idx}`, body).then(r => r.json());
+    st.textContent = t(d.ok ? 'cfg_ok' : 'cfg_err');
+    st.className   = 'status-line ' + (d.ok ? 'ok' : 'error');
+  } catch(e) {
+    st.textContent = t('cfg_err');
+    st.className   = 'status-line error';
+  }
+  $(`cfg-wifi${idx}-pass`).value = '';
+}
+
 // ── Config ────────────────────────────────────────────────────────────────────
 async function loadConfig() {
   try {
     const c = await fetch('/api/config').then(r => r.json());
-    $('cfg-wifi-ssid').value   = c.wifi_ssid        ?? '';
     $('cfg-mqtt-server').value = c.mqtt_server       ?? '';
     $('cfg-mqtt-port').value   = c.mqtt_port         ?? 1883;
     $('cfg-mqtt-en').checked   = c.mqtt_enabled      !== false;
@@ -937,7 +1066,6 @@ async function loadConfig() {
 $('btn-save-cfg').addEventListener('click', async () => {
   const st   = $('cfg-status');
   const body = {
-    wifi_ssid:        $('cfg-wifi-ssid').value,
     mqtt_server:      $('cfg-mqtt-server').value,
     mqtt_port:        +$('cfg-mqtt-port').value,
     mqtt_enabled:     $('cfg-mqtt-en').checked,
@@ -949,8 +1077,6 @@ $('btn-save-cfg').addEventListener('click', async () => {
     log_level:        +$('cfg-log-level').value,
     ntp_server:       $('cfg-ntp-server').value,
   };
-  const pass = $('cfg-wifi-pass').value;
-  if (pass) body.wifi_pass = pass;
   try {
     const d = await post('/api/config', body).then(r => r.json());
     st.textContent = t(d.ok ? 'cfg_ok' : 'cfg_err');
@@ -959,7 +1085,6 @@ $('btn-save-cfg').addEventListener('click', async () => {
     st.textContent = t('cfg_err');
     st.className   = 'status-line error';
   }
-  $('cfg-wifi-pass').value = '';
 });
 
 // ── OTA: GitHub ───────────────────────────────────────────────────────────────

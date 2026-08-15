@@ -3,6 +3,7 @@
 #include <time.h>
 #include <WiFi.h>
 #include "MQTTClient.h"
+#include "WiFiManager.h"
 #include "../cfg/AppConfig.h"
 #include "../logger/Logger.h"
 #include "../state.h"
@@ -60,7 +61,7 @@ String WebUI::buildStatusJSON() {
     doc["otaProgress"] = g_state.otaProgress;
     doc["rssi"]          = (int8_t)WiFi.RSSI();
     doc["fwVersion"]     = g_state.fwVersion;
-    doc["wifiSsid"]      = g_cfg.wifi_ssid;
+    doc["wifiSsid"]      = WiFiManager::getSSID();
     doc["mqttConnected"] = MQTTClient::isConnected();
     time_t now = time(nullptr);
     doc["ntpSynced"]   = (now > 1000000000UL);
@@ -197,7 +198,6 @@ void WebUI::apiPresetsDeleteAll() {
 
 void WebUI::apiConfigGet() {
     StaticJsonDocument<512> doc;
-    doc["wifi_ssid"]        = g_cfg.wifi_ssid;
     doc["mqtt_server"]      = g_cfg.mqtt_server;
     doc["mqtt_port"]        = g_cfg.mqtt_port;
     doc["mqtt_enabled"]     = g_cfg.mqtt_enabled;
@@ -218,8 +218,6 @@ void WebUI::apiConfigPost() {
     StaticJsonDocument<512> doc;
     if (deserializeJson(doc, s_server.arg("plain"))) { sendError(400, "JSON error"); return; }
 
-    if (doc.containsKey("wifi_ssid"))       strlcpy(g_cfg.wifi_ssid,        doc["wifi_ssid"]        | "", sizeof(g_cfg.wifi_ssid));
-    if (doc.containsKey("wifi_pass"))       strlcpy(g_cfg.wifi_pass,        doc["wifi_pass"]        | "", sizeof(g_cfg.wifi_pass));
     if (doc.containsKey("mqtt_server"))     strlcpy(g_cfg.mqtt_server,      doc["mqtt_server"]      | "", sizeof(g_cfg.mqtt_server));
     if (doc.containsKey("mqtt_port"))       g_cfg.mqtt_port      = doc["mqtt_port"];
     if (doc.containsKey("mqtt_enabled"))    g_cfg.mqtt_enabled   = doc["mqtt_enabled"];
@@ -239,6 +237,47 @@ void WebUI::apiConfigPost() {
 
     Config::save();
     sendJSON(200, "{\"ok\":true,\"reboot\":false}");
+}
+
+void WebUI::apiWifiGet() {
+    StaticJsonDocument<768> doc;
+    for (uint8_t idx = 0; idx < 2; idx++) {
+        WifiNetworkConfig net = WiFiManager::getNetworkConfig(idx);
+        JsonObject obj = doc.createNestedObject(idx == 0 ? "n0" : "n1");
+        obj["ssid"]     = net.ssid;
+        obj["static"]   = net.useStaticIP;
+        obj["ip"]       = net.ip;
+        obj["mask"]     = net.netmask;
+        obj["gw"]       = net.gateway;
+        obj["dns"]      = net.dns;
+        // password intentionally omitted from GET response
+    }
+    String out;
+    serializeJson(doc, out);
+    sendJSON(200, out);
+}
+
+void WebUI::apiWifiPost() {
+    if (!s_server.hasArg("plain")) { sendError(400, "No body"); return; }
+    // Determine which network: /api/wifi/0 or /api/wifi/1
+    String uri = s_server.uri();
+    uint8_t idx = uri.endsWith("/1") ? 1 : 0;
+
+    StaticJsonDocument<384> doc;
+    if (deserializeJson(doc, s_server.arg("plain"))) { sendError(400, "JSON error"); return; }
+
+    WifiNetworkConfig net = WiFiManager::getNetworkConfig(idx);
+    if (doc.containsKey("ssid"))   strlcpy(net.ssid,    doc["ssid"]   | "", sizeof(net.ssid));
+    if (doc.containsKey("pass") && strlen(doc["pass"] | "") > 0)
+                                   strlcpy(net.pass,    doc["pass"]   | "", sizeof(net.pass));
+    if (doc.containsKey("static")) net.useStaticIP = doc["static"];
+    if (doc.containsKey("ip"))     strlcpy(net.ip,      doc["ip"]     | "", sizeof(net.ip));
+    if (doc.containsKey("mask"))   strlcpy(net.netmask, doc["mask"]   | "", sizeof(net.netmask));
+    if (doc.containsKey("gw"))     strlcpy(net.gateway, doc["gw"]     | "", sizeof(net.gateway));
+    if (doc.containsKey("dns"))    strlcpy(net.dns,     doc["dns"]    | "", sizeof(net.dns));
+
+    WiFiManager::setNetworkConfig(idx, net);
+    sendJSON(200, "{\"ok\":true}");
 }
 
 // ── SSE ───────────────────────────────────────────────────────────────────────
@@ -415,6 +454,9 @@ bool WebUI::begin() {
     s_server.on("/api/presets",      HTTP_DELETE, apiPresetsDeleteAll);
     s_server.on("/api/config",       HTTP_GET,    apiConfigGet);
     s_server.on("/api/config",       HTTP_POST,   apiConfigPost);
+    s_server.on("/api/wifi",         HTTP_GET,    apiWifiGet);
+    s_server.on("/api/wifi/0",       HTTP_POST,   apiWifiPost);
+    s_server.on("/api/wifi/1",       HTTP_POST,   apiWifiPost);
     s_server.on("/api/reboot",       HTTP_POST,   apiReboot);
     s_server.on("/events",           HTTP_GET,    handleSSE);
     s_server.on("/ota/local/fw",     HTTP_POST,   [](){}, otaLocalFW);
