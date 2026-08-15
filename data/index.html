@@ -344,6 +344,14 @@ tr:hover td { background: var(--hover); }
         <button class="btn btn-primary" id="btn-ktune">K-Tune</button>
       </div>
     </div>
+
+    <div class="card">
+      <div class="card-lbl">Shelly Plus1PM</div>
+      <div class="row-gap" style="align-items:center">
+        <button class="btn btn-primary" id="btn-shelly" onclick="shellyToggle()">—</button>
+        <span id="shelly-pwr" style="font-size:.82rem;color:var(--text2)">…</span>
+      </div>
+    </div>
   </div>
 
   <!-- Presets -->
@@ -941,6 +949,49 @@ $('btn-ktune').addEventListener('click', () => {
   $('btn-ktune').classList.toggle('btn-on', next);
   post('/api/ktune', { ktune: next });
 });
+
+// ── Shelly ────────────────────────────────────────────────────────────────────
+function updateShellyUI(output) {
+  const btn = $('btn-shelly');
+  const pwr = $('shelly-pwr');
+  if (output) {
+    btn.textContent  = 'Turn OFF';
+    btn.className    = 'btn btn-danger';
+    pwr.textContent  = '● ON';
+    pwr.style.color  = 'var(--c-ok, #4caf50)';
+  } else {
+    btn.textContent  = 'Turn ON';
+    btn.className    = 'btn btn-primary';
+    pwr.textContent  = '○ OFF';
+    pwr.style.color  = 'var(--text2)';
+  }
+}
+
+async function shellyToggle() {
+  $('btn-shelly').disabled = true;
+  try {
+    const d = await post('/api/shelly/toggle', {}).then(r => r.json());
+    if (typeof d.output !== 'undefined') updateShellyUI(d.output);
+  } catch(e) {
+    $('shelly-pwr').textContent = 'Offline';
+    $('shelly-pwr').style.color = 'var(--swr-bad)';
+  }
+  $('btn-shelly').disabled = false;
+}
+
+async function shellyPoll() {
+  try {
+    const d = await fetch('/api/shelly/status').then(r => r.json());
+    if (typeof d.output !== 'undefined') updateShellyUI(d.output);
+  } catch(e) {
+    $('btn-shelly').textContent = '?';
+    $('shelly-pwr').textContent = 'Offline';
+    $('shelly-pwr').style.color = 'var(--swr-bad)';
+  }
+}
+
+shellyPoll();
+setInterval(shellyPoll, 10000);
 
 // ── SSE ───────────────────────────────────────────────────────────────────────
 let g_evtSrc = null;

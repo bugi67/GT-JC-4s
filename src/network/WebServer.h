@@ -29,6 +29,8 @@ private:
     static void apiConfigPost();
     static void apiWifiGet();
     static void apiWifiPost();
+    static void apiShellyStatus();
+    static void apiShellyToggle();
     static void apiReboot();
 
     // SSE — non-blocking: handleSSE() stores client, pushSSE() runs in task loop

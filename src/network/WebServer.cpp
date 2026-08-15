@@ -2,6 +2,7 @@
 #include "../config.h"
 #include <time.h>
 #include <WiFi.h>
+#include <HTTPClient.h>
 #include "MQTTClient.h"
 #include "WiFiManager.h"
 #include "../cfg/AppConfig.h"
@@ -199,6 +200,7 @@ void WebUI::apiPresetsDeleteAll() {
 void WebUI::apiConfigGet() {
     StaticJsonDocument<512> doc;
     doc["mqtt_server"]      = g_cfg.mqtt_server;
+    doc["shelly_url"]       = g_cfg.shelly_url;
     doc["mqtt_port"]        = g_cfg.mqtt_port;
     doc["mqtt_enabled"]     = g_cfg.mqtt_enabled;
     doc["tune_threshold"]   = g_cfg.tune_threshold;
@@ -219,6 +221,7 @@ void WebUI::apiConfigPost() {
     if (deserializeJson(doc, s_server.arg("plain"))) { sendError(400, "JSON error"); return; }
 
     if (doc.containsKey("mqtt_server"))     strlcpy(g_cfg.mqtt_server,      doc["mqtt_server"]      | "", sizeof(g_cfg.mqtt_server));
+    if (doc.containsKey("shelly_url"))      strlcpy(g_cfg.shelly_url,       doc["shelly_url"]       | "", sizeof(g_cfg.shelly_url));
     if (doc.containsKey("mqtt_port"))       g_cfg.mqtt_port      = doc["mqtt_port"];
     if (doc.containsKey("mqtt_enabled"))    g_cfg.mqtt_enabled   = doc["mqtt_enabled"];
     if (doc.containsKey("tune_threshold"))  g_cfg.tune_threshold = doc["tune_threshold"];
@@ -237,6 +240,32 @@ void WebUI::apiConfigPost() {
 
     Config::save();
     sendJSON(200, "{\"ok\":true,\"reboot\":false}");
+}
+
+// ── Shelly proxy ──────────────────────────────────────────────────────────────
+
+static String shellyRpc(const char* path) {
+    if (strlen(g_cfg.shelly_url) == 0) return "";
+    HTTPClient http;
+    String url = String(g_cfg.shelly_url) + path;
+    http.begin(url);
+    http.setTimeout(3000);
+    int code = http.GET();
+    String body = (code == 200) ? http.getString() : "";
+    http.end();
+    return body;
+}
+
+void WebUI::apiShellyStatus() {
+    String body = shellyRpc("/rpc/Switch.GetStatus?id=0");
+    if (body.length() == 0) { sendError(502, "Shelly unreachable"); return; }
+    sendJSON(200, body);
+}
+
+void WebUI::apiShellyToggle() {
+    String body = shellyRpc("/rpc/Switch.Toggle?id=0");
+    if (body.length() == 0) { sendError(502, "Shelly unreachable"); return; }
+    sendJSON(200, body);
 }
 
 void WebUI::apiWifiGet() {
@@ -454,10 +483,12 @@ bool WebUI::begin() {
     s_server.on("/api/presets",      HTTP_DELETE, apiPresetsDeleteAll);
     s_server.on("/api/config",       HTTP_GET,    apiConfigGet);
     s_server.on("/api/config",       HTTP_POST,   apiConfigPost);
-    s_server.on("/api/wifi",         HTTP_GET,    apiWifiGet);
-    s_server.on("/api/wifi/0",       HTTP_POST,   apiWifiPost);
-    s_server.on("/api/wifi/1",       HTTP_POST,   apiWifiPost);
-    s_server.on("/api/reboot",       HTTP_POST,   apiReboot);
+    s_server.on("/api/wifi",           HTTP_GET,    apiWifiGet);
+    s_server.on("/api/wifi/0",         HTTP_POST,   apiWifiPost);
+    s_server.on("/api/wifi/1",         HTTP_POST,   apiWifiPost);
+    s_server.on("/api/shelly/status",  HTTP_GET,    apiShellyStatus);
+    s_server.on("/api/shelly/toggle",  HTTP_POST,   apiShellyToggle);
+    s_server.on("/api/reboot",         HTTP_POST,   apiReboot);
     s_server.on("/events",           HTTP_GET,    handleSSE);
     s_server.on("/ota/local/fw",     HTTP_POST,   [](){}, otaLocalFW);
     s_server.on("/ota/local/fs",     HTTP_POST,   [](){}, otaLocalFS);

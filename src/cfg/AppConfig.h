@@ -4,6 +4,7 @@
 
 struct AppConfig {
     char     mqtt_server[64];
+    char     shelly_url[64];
     uint16_t mqtt_port;
     bool     mqtt_enabled;
     float    tune_threshold;

@@ -93,6 +93,9 @@ static const float C_PF[] = {
 #define NTP_SERVER_DEFAULT    "ntp.metas.ch"
 #define NTP_TIMEZONE          "CET-1CEST,M3.5.0,M10.5.0/3"  // Switzerland / CET/CEST
 
+// ── Shelly ────────────────────────────────────────────────────────────────────
+#define SHELLY_URL_DEFAULT     "http://192.168.100.136"
+
 // ── OTA ───────────────────────────────────────────────────────────────────────
 #define OTA_MANIFEST_URL_DEFAULT \
     "https://github.com/bugi67/GT-JC-4s/releases/latest/download/release.json"

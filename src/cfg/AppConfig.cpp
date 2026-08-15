@@ -9,6 +9,7 @@ AppConfig g_cfg;
 
 static void applyDefaults(AppConfig& c) {
     c.mqtt_server[0]  = '\0';
+    strlcpy(c.shelly_url, SHELLY_URL_DEFAULT, sizeof(c.shelly_url));
     c.mqtt_port       = DEFAULT_MQTT_PORT;
     c.mqtt_enabled    = true;
     c.tune_threshold  = DEFAULT_TUNE_THRESHOLD;
@@ -39,6 +40,7 @@ bool Config::load() {
     }
 
     strlcpy(g_cfg.mqtt_server,      doc["mqtt_server"]      | "", sizeof(g_cfg.mqtt_server));
+    strlcpy(g_cfg.shelly_url,      doc["shelly_url"]       | SHELLY_URL_DEFAULT, sizeof(g_cfg.shelly_url));
     g_cfg.mqtt_port      = doc["mqtt_port"]      | DEFAULT_MQTT_PORT;
     g_cfg.mqtt_enabled   = doc["mqtt_enabled"]   | true;
     g_cfg.tune_threshold = doc["tune_threshold"] | DEFAULT_TUNE_THRESHOLD;
@@ -58,6 +60,7 @@ bool Config::save() {
     StaticJsonDocument<1024> doc;
 
     doc["mqtt_server"]      = g_cfg.mqtt_server;
+    doc["shelly_url"]       = g_cfg.shelly_url;
     doc["mqtt_port"]        = g_cfg.mqtt_port;
     doc["mqtt_enabled"]     = g_cfg.mqtt_enabled;
     doc["tune_threshold"]   = g_cfg.tune_threshold;
