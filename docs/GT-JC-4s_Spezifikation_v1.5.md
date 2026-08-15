@@ -1,6 +1,6 @@
-# GT-JC-4s — Projektspezifikation v2.6
+# GT-JC-4s — Projektspezifikation v2.7
 **Antennenkoppler-Steuerung mit AutoTuner**
-Datum: 2026-07-21 | Autor: HB9CZF | Status: Implementiert / In Test
+Datum: 2026-08-15 | Autor: HB9CZF | Status: Implementiert / In Test
 
 ---
 
@@ -456,16 +456,18 @@ WiFi-Credentials werden **zusätzlich** im NVS gespeichert. Dieser liegt auf ein
 | `ssid` | String | WLAN SSID |
 | `pass` | String | WLAN Passwort |
 
+**Netzwerkspeicherung:** Beide Netzwerke in `/wifi.json` (LittleFS), je mit den Feldern `ssid`, `pass`, `static`, `ip`, `mask`, `gw`, `dns`. Beim ersten Boot wird `/wifi.json` angelegt: bevorzugt aus NVS-Credentials (Migration von älterer Firmware), sonst aus `WIFI_SEED1_*` / `WIFI_SEED2_*` (`config.h`). Diese Konstanten werden danach nicht mehr gelesen.
+
 **Ladestrategie in `WiFiManager::begin()`:**
-1. NVS lesen → falls `ssid` nicht leer: in `g_cfg` übernehmen und verbinden
-2. Fallback 1: `WIFI_FALLBACK1_SSID` / `WIFI_FALLBACK1_PASS` (`config.h`)
-3. Fallback 2: `WIFI_FALLBACK2_SSID` / `WIFI_FALLBACK2_PASS` (`config.h`)
-4. Falls alle scheitern: Captive Portal starten
+1. `seedIfMissing()` — `/wifi.json` anlegen falls nicht vorhanden (NVS-Migration oder Seed-Konstanten)
+2. Netzwerk 1 aus `/wifi.json` versuchen (inkl. statische IP falls konfiguriert)
+3. Netzwerk 2 aus `/wifi.json` versuchen
+4. Falls beide scheitern: SoftAP + Captive Portal starten
 
 ### 6.3 Captive Portal (WiFi-Erstkonfiguration)
-Bei fehlendem SSID startet `WiFiManager::runCaptivePortal()`:
+Bei keinem erreichbaren Netzwerk startet `WiFiManager::runCaptivePortal()`:
 - SoftAP `GT-JC-4s-Setup` + `DNSServer` (alle DNS → AP-IP)
-- HTML-Formular auf Port 80 (SSID + Passwort)
+- HTML-Formular auf Port 80 mit **zwei Netzwerk-Blöcken** (SSID, Passwort, statische IP-Felder)
 - Nach Speichern: Credentials in **NVS** + `Config::save()` → Neustart
 - Funktion kehrt nie zurück
 
@@ -622,7 +624,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v2.6 — Implementiert
+## 12. Status v2.7 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -673,7 +675,8 @@ GT-JC-4s/
 | 45 | MQTT: IP-Adresse (`JC-4s/ip`) und MAC-Adresse (`JC-4s/mac`) bei jedem MQTT-Connect als retained Message publiziert — erleichtert Gerät-Identifikation nach DHCP-Wechsel oder Netzwerkwechsel | ✅ |
 | 46 | Web-GUI: API-Sidebar-Link verwendet relativen Pfad `/api/status` statt hardcodierter IP — funktioniert korrekt nach DHCP-Adresswechsel | ✅ |
 | 47 | Firmware-Version 1.2.0 als GitHub-Release `v1.2.0` publiziert (Items 44–46 enthalten); OTA-Update via Web-GUI Maintenance oder `POST /ota/github/install` | ✅ |
-| 48 | WiFi: Hardcodierte Fallback-Netzwerke (`<SSID1>`, `<SSID2>`) werden nach NVS-Credentials versucht; erst danach Captive Portal — ermöglicht Betrieb an bekannten Standorten ohne Konfiguration | ✅ |
+| 48 | WiFi: Zwei konfigurierbare Netzwerke in `/wifi.json` (LittleFS), je mit optionaler statischer IP (IP, Maske, GW, DNS); Seed-Konstanten (`WIFI_SEED1_*`, `WIFI_SEED2_*` in `config.h`) werden beim ersten Boot geschrieben; NVS-Credentials älterer Firmware werden automatisch migriert; Captive Portal zeigt beide Netzwerke mit Static-IP-Feldern; Web-GUI Einstellungen erlauben Änderung ohne Reboot | ✅ |
 | 49 | Web-GUI Stats-Panel: WLAN-SSID (`wifiSsid` aus `/api/status`) zwischen RSSI und Uhrzeit angezeigt | ✅ |
 | 50 | Fix: RSSI-Update (`g_state.rssi`) erfolgt unabhängig vom MQTT-Verbindungsstatus; MQTT-Publish hat eigenen Timer — RSSI wird im Web-GUI auch ohne erreichbaren MQTT-Broker korrekt angezeigt | ✅ |
 | 51 | Web-GUI Stats-Panel: MQTT-Broker-Verbindungsstatus (`mqttConnected` aus `/api/status`) als `● Online` (grün) / `○ Offline` (orange) angezeigt; `MQTTClient::isConnected()` exponiert `s_mqtt.connected()` an WebServer | ✅ |
+| 52 | WiFi: REST-API `GET /api/wifi` + `POST /api/wifi/0` / `POST /api/wifi/1` für Netzwerkkonfiguration; Web-GUI Settings zeigt zwei separate Netzwerk-Cards mit Static-IP-Toggle; Passwort wird bei GET nicht zurückgegeben (nur schreiben möglich) | ✅ |
