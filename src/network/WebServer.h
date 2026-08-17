@@ -24,6 +24,7 @@ private:
     static void apiKTune();
     static void apiPresetsGet();
     static void apiPresetDeleteOne();
+    static void apiPresetShellyPost();
     static void apiPresetsDeleteAll();
     static void apiConfigGet();
     static void apiConfigPost();

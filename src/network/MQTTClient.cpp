@@ -6,9 +6,25 @@
 #include "../tuner/I2CController.h"
 #include "../tuner/PresetStore.h"
 #include <WiFi.h>
+#include <HTTPClient.h>
 
 static WiFiClient   s_wifiClient;
 static PubSubClient s_mqtt(s_wifiClient);
+
+// ── Shelly auto-switch ────────────────────────────────────────────────────────
+static volatile bool s_shellyPending = false;
+static volatile bool s_shellyTarget  = false;
+
+static void shellyApply(bool on) {
+    if (strlen(g_cfg.shelly_url) == 0) return;
+    HTTPClient http;
+    String url = String(g_cfg.shelly_url) + "/rpc/Switch.Set?id=0&on=" + (on ? "true" : "false");
+    http.begin(url);
+    http.setTimeout(3000);
+    int code = http.GET();
+    http.end();
+    LOG_INFO("MQTT", "Shelly %s (HTTP %d)", on ? "ON" : "OFF", code);
+}
 
 // ── MQTT log queue ────────────────────────────────────────────────────────────
 struct LogLine { char text[200]; };
@@ -83,6 +99,9 @@ void MQTTClient::onMessage(char* topic, byte* payload, unsigned int len) {
                 cmd = {I2CCmd::SET_LC, p.L, p.C, p.mode};
                 sendCmd = true;
             }
+            // 80 m band (3500–4000 kHz) → Shelly ON; all other bands → OFF
+            s_shellyTarget  = (newFreq >= 3500 && newFreq <= 4000);
+            s_shellyPending = true;
         }
     } else if (strcmp(topic, MQTT_SUB_TUNE) == 0) {
         if (strcmp(val, "1") == 0) {
@@ -262,6 +281,13 @@ void MQTTClient::taskMQTT(void* param) {
                 }
             }
         }
+        // Apply pending Shelly command (set in onMessage; executed here to avoid
+        // blocking the MQTT callback with an HTTP call)
+        if (s_shellyPending) {
+            s_shellyPending = false;
+            shellyApply(s_shellyTarget);
+        }
+
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }

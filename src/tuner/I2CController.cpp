@@ -231,6 +231,7 @@ void I2CController::taskI2C(void* param) {
                 Preset p;
                 p.freq_kHz = cmd.freq_kHz;
                 p.L = cmd.L; p.C = cmd.C; p.mode = cmd.mode; p.swr = cmd.swr;
+                p.shellyOn = cmd.shellyOn;
                 LOG_INFO("I2C", "SAVE_PRESET: freq=%u L=%u C=%u mode=%u swr=%.2f count=%d",
                          p.freq_kHz, p.L, p.C, p.mode, p.swr, PresetStore::count());
                 if (!PresetStore::save(p)) {

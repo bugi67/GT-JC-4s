@@ -435,6 +435,7 @@ void AutoTuner::taskAutoTuner(void* param) {
                 I2CCommand sc = {};
                 sc.cmd = I2CCmd::SAVE_PRESET;
                 sc.freq_kHz = freqSnapped; sc.L = L; sc.C = C; sc.mode = mode; sc.swr = finalSWR;
+                sc.shellyOn = (freqSnapped >= 3500 && freqSnapped <= 4000);
                 xQueueSend(g_i2cCmdQueue, &sc, portMAX_DELAY);
             }
         }

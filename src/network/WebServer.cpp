@@ -176,6 +176,7 @@ void WebUI::apiPresetsGet() {
             o["C"]        = p.C;
             o["mode"]     = p.mode;
             o["swr"]      = (p.swr > 0.0f) ? serialized(String(p.swr, 2)) : serialized(String("null"));
+            o["shellyOn"] = p.shellyOn;
         }
     }
     String out;
@@ -189,6 +190,28 @@ void WebUI::apiPresetDeleteOne() {
     if (lastSlash < 0) { sendError(400, "Bad URI"); return; }
     uint16_t freq = (uint16_t)uri.substring(lastSlash + 1).toInt();
     PresetStore::deleteByFreq(freq);
+    sendJSON(200, "{\"ok\":true}");
+}
+
+void WebUI::apiPresetShellyPost() {
+    String uri = s_server.uri();   // /api/presets/7100/shelly
+    // strip "/shelly" suffix, then extract freq
+    int last = uri.lastIndexOf('/');
+    if (last < 0) { sendError(400, "Bad URI"); return; }
+    String freqPart = uri.substring(0, last);
+    int prev = freqPart.lastIndexOf('/');
+    if (prev < 0) { sendError(400, "Bad URI"); return; }
+    uint16_t freq = (uint16_t)freqPart.substring(prev + 1).toInt();
+
+    StaticJsonDocument<64> req;
+    if (deserializeJson(req, s_server.arg("plain"))) { sendError(400, "JSON error"); return; }
+    bool on = req["shellyOn"] | false;
+
+    // Find and update the preset in the store
+    Preset p;
+    if (!PresetStore::findBest(freq, p) || p.freq_kHz != freq) { sendError(404, "Preset not found"); return; }
+    p.shellyOn = on;
+    PresetStore::save(p);   // save() replaces the existing slot
     sendJSON(200, "{\"ok\":true}");
 }
 
@@ -495,10 +518,17 @@ bool WebUI::begin() {
     s_server.on("/ota/github/check", HTTP_GET,    otaGitHubCheck);
     s_server.on("/ota/github/install", HTTP_POST, otaGitHubInstall);
     s_server.on("/favicon.ico", HTTP_GET, []() { s_server.send(204); });
-    // Preset delete by freq: /api/presets/{freq}
+    // Dynamic preset routes: DELETE /api/presets/{freq}, POST /api/presets/{freq}/shelly
     s_server.onNotFound([]() {
-        if (s_server.uri().startsWith("/api/presets/") && s_server.method() == HTTP_DELETE) {
-            apiPresetDeleteOne();
+        String uri = s_server.uri();
+        if (uri.startsWith("/api/presets/")) {
+            if (s_server.method() == HTTP_DELETE) {
+                apiPresetDeleteOne();
+            } else if (s_server.method() == HTTP_POST && uri.endsWith("/shelly")) {
+                apiPresetShellyPost();
+            } else {
+                handleNotFound();
+            }
         } else {
             handleNotFound();
         }

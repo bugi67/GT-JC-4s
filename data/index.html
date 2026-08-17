@@ -369,11 +369,12 @@ tr:hover td { background: var(--hover); }
               <th>L</th><th>C</th>
               <th data-i18n="th_mode">Mode</th>
               <th data-i18n="th_swr">SWR</th>
+              <th data-i18n="th_shelly">Shelly</th>
               <th></th>
             </tr>
           </thead>
           <tbody id="presets-tbody">
-            <tr><td colspan="6" class="empty-cell" data-i18n="lbl_loading">Loading…</td></tr>
+            <tr><td colspan="7" class="empty-cell" data-i18n="lbl_loading">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -678,6 +679,7 @@ const STR = {
     btn_autotune: 'Start AutoTune', btn_finetune: 'Fine Tune', btn_abort: 'Abort',
     tune_states: ['Idle', 'Tuning…', 'Done', 'Aborted'],
     title_presets: 'Saved Presets', th_freq: 'Frequency', th_mode: 'Mode', th_swr: 'SWR',
+    th_shelly: 'Shelly', shelly_on: 'Shelly ON – click to disable', shelly_off: 'Shelly OFF – click to enable',
     lbl_loading: 'Loading…',     no_presets: 'No presets saved',
     btn_delete_all: 'Delete all', btn_del: 'Delete',
     confirm_del_preset: 'Delete preset for {0} kHz?',
@@ -720,6 +722,7 @@ const STR = {
     btn_autotune: 'AutoTune starten', btn_finetune: 'Feinabstimmung', btn_abort: 'Abbrechen',
     tune_states: ['Bereit', 'Abstimmen…', 'Fertig', 'Abgebrochen'],
     title_presets: 'Gespeicherte Presets', th_freq: 'Frequenz', th_mode: 'Modus', th_swr: 'SWR',
+    th_shelly: 'Shelly', shelly_on: 'Shelly EIN – klicken zum Deaktivieren', shelly_off: 'Shelly AUS – klicken zum Aktivieren',
     lbl_loading: 'Lade…',           no_presets: 'Keine Presets gespeichert',
     btn_delete_all: 'Alle löschen',  btn_del: 'Löschen',
     confirm_del_preset: 'Preset für {0} kHz löschen?',
@@ -1021,24 +1024,37 @@ async function loadPresets() {
     const tbody = $('presets-tbody');
     tbody.innerHTML = '';
     if (!rows.length) {
-      tbody.innerHTML = `<tr><td colspan="6" class="empty-cell">${t('no_presets')}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">${t('no_presets')}</td></tr>`;
       return;
     }
     rows.forEach(p => {
       const tr = document.createElement('tr');
       const swrStr = (p.swr != null) ? p.swr.toFixed(2) : '—';
+      const shellyIcon = p.shellyOn ? '●' : '○';
+      const shellyTitle = p.shellyOn ? t('shelly_on') : t('shelly_off');
       tr.innerHTML =
         `<td>${p.freq_kHz} kHz</td><td>${p.L}</td><td>${p.C}</td>` +
         `<td>${MODE_NAMES[p.mode] ?? p.mode}</td>` +
         `<td>${swrStr}</td>` +
+        `<td style="text-align:center"><button class="btn" style="padding:2px 10px;font-size:.9rem" title="${shellyTitle}"` +
+        ` onclick="togglePresetShelly(${p.freq_kHz}, ${p.shellyOn})">${shellyIcon}</button></td>` +
         `<td><button class="btn btn-danger" style="padding:3px 10px;font-size:.74rem"` +
         ` onclick="deletePreset(${p.freq_kHz})">${t('btn_del')}</button></td>`;
       tbody.appendChild(tr);
     });
   } catch(e) {
-    $('presets-tbody').innerHTML = `<tr><td colspan="6" class="empty-cell">Error</td></tr>`;
+    $('presets-tbody').innerHTML = `<tr><td colspan="7" class="empty-cell">Error</td></tr>`;
   }
 }
+
+window.togglePresetShelly = async (freq, currentOn) => {
+  await fetch(`/api/presets/${freq}/shelly`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({shellyOn: !currentOn})
+  });
+  loadPresets();
+};
 
 window.deletePreset = async freq => {
   if (!confirm(t('confirm_del_preset', freq))) return;

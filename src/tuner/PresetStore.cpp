@@ -49,7 +49,7 @@ void PresetStore::packPreset(const Preset& p, uint8_t* buf) {
     buf[1] = p.freq_kHz & 0xFF;
     buf[2] = (p.L >> 8) & 0xFF;
     buf[3] = p.L & 0xFF;
-    uint16_t c_mode = ((uint16_t)(p.C & 0x1FF) << 7) | (p.mode & 0x03);
+    uint16_t c_mode = ((uint16_t)(p.C & 0x1FF) << 7) | (p.shellyOn ? 0x04 : 0x00) | (p.mode & 0x03);
     buf[4] = (c_mode >> 8) & 0xFF;
     buf[5] = c_mode & 0xFF;
     buf[6] = (p.swr > 0.0f) ? (uint8_t)round(p.swr * 10.0f) : 0;
@@ -59,8 +59,9 @@ void PresetStore::unpackPreset(const uint8_t* buf, Preset& p) {
     p.freq_kHz = ((uint16_t)buf[0] << 8) | buf[1];
     p.L        = ((uint16_t)buf[2] << 8) | buf[3];
     uint16_t c_mode = ((uint16_t)buf[4] << 8) | buf[5];
-    p.C    = (c_mode >> 7) & 0x1FF;
-    p.mode = c_mode & 0x03;
+    p.C        = (c_mode >> 7) & 0x1FF;
+    p.shellyOn = (c_mode >> 2) & 0x01;
+    p.mode     = c_mode & 0x03;
     if (p.mode == 0) p.mode = 1;
     p.swr  = (buf[6] > 0) ? (float)buf[6] / 10.0f : 0.0f;
 }
