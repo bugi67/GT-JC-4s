@@ -1,6 +1,6 @@
-# GT-JC-4s — Projektspezifikation v2.7
+# GT-JC-4s — Projektspezifikation v2.8
 **Antennenkoppler-Steuerung mit AutoTuner**
-Datum: 2026-08-15 | Autor: HB9CZF | Status: Implementiert / In Test
+Datum: 2026-08-17 | Autor: HB9CZF | Status: Implementiert / In Test
 
 ---
 
@@ -89,6 +89,9 @@ Web-GUI   ──HTTP──►  ESP32-C3            PCF8591 ADC   ◄──  SWR-
 
 **MQTT Frequenz-Auto-Apply (Segment-Wechsel):**
 Wenn `JC-4s/freq` einen Wert sendet der zu einem anderen 20 kHz-Segment gehört als die zuletzt empfangene Frequenz, sucht `taskMQTT` via `PresetStore::findBest(seg)` nach einem Preset für dieses Segment. Falls ein Preset mit exakt passender Segment-Basisfrequenz (`p.freq_kHz == seg`) existiert, wird sofort `SET_LC` gesendet — ohne AutoTune. Kein Match: kein SET_LC, `lastSeg` wird trotzdem aktualisiert (verhindert Retry-Schleife).
+
+**MQTT Frequenz-Auto-Shelly (80m-Band):**
+Bei jedem Segment-Wechsel setzt `onMessage()` ein Pending-Flag (`s_shellyPending`, `s_shellyTarget`). Der `taskMQTT`-Loop ruft ausserhalb des Callbacks `shellyApply(on)` auf (`GET /rpc/Switch.Set?id=0&on=true/false` via HTTPClient). Ziel: Shelly Plus1PM **EIN** bei 80m (3500–4000 kHz), **AUS** bei allen anderen Bändern. Das Pending-Flag verhindert, dass der MQTT-Callback durch einen HTTP-Call blockiert wird.
 
 **MQTT Retained-Message-Schutz:**
 MQTT-Broker liefern beim Subscribe sofort alle retained Messages zurück. Dies würde nach dem Boot L/C/mode auf gespeicherte Werte setzen und die Hardware-Initialisierung (L=0, C=0, mode=1) überschreiben. Zwei Schutzmechanismen:
@@ -213,14 +216,15 @@ SWR = (1 + rho) / (1 - rho)
 - Kein TX-Signal (Vfwd < tune_tx_level): swr = 0.0, returnLoss = 0.0 → Web-GUI zeigt „—"
 - Hintergrundmessung: `taskI2C` misst alle ~250 ms bei leerem Befehlspuffer
 
-**Preset-Speicherung (I2C-EEPROM 0x50) — Format v2**
+**Preset-Speicherung (I2C-EEPROM 0x50) — Format v3**
 ```
 Struktur je Preset (7 Byte):
   uint16_t freq;      // Frequenz in kHz (Big-Endian), gerundet auf 20 kHz-Segment-Basis
   uint16_t L;         // L-Wert 0–2047 (Big-Endian)
-  uint16_t C_mode;    // Bits 15..7: C-Wert 0–511, Bits 1..0: Tuner-Modus
+  uint16_t C_mode;    // Bits 15..7: C-Wert 0–511, Bit 2: shellyOn, Bits 1..0: Tuner-Modus
   uint8_t  swr10;     // SWR × 10 als uint8_t (0 = unbekannt); SWR 1.05 → 10
 ```
+- **`shellyOn` (Bit 2 von C_mode):** Ob der Shelly Plus1PM bei diesem Preset eingeschaltet sein soll. AutoTuner setzt das Bit automatisch beim Speichern: `1` für 80m-Band (3500–4000 kHz), `0` für alle anderen Bänder. Manuell umschaltbar via Web-GUI Preset-Tabelle oder `POST /api/presets/{freq}/shelly`. Rückwärtskompatibel: Bit 2 war in Format v2 ungenutzt → alte Presets lesen als 0 (Shelly AUS).
 - Max. 36 Presets (⌊256 / 7⌋)
 - **20 kHz-Segment-Adressierung:** Frequenz wird beim Speichern auf die Segment-Basisfrequenz gerundet (`floor(freq_kHz / 20) * 20`). 7032 kHz → gespeichert als 7020. Pro Segment darf nur **ein** Preset existieren; bestehende Einträge im selben Segment werden vor dem Speichern gelöscht.
 - `PresetStore::findBest(seg)` sucht das Preset mit kleinstem Abstand zur übergebenen Frequenz. Für MQTT-Auto-Apply wird auf exakten Segment-Match geprüft (`p.freq_kHz == seg`).
@@ -314,9 +318,9 @@ HTML/CSS/JS liegen als separate Dateien in LittleFS (`data/`). Kein externes CDN
 **Layout:** Drei-Spalten-Design (angelehnt an Shelly): 88 px Sidebar + Hauptbereich + 264 px Echtzeit-Statsleiste.
 
 **Seiten:**
-1. **Dashboard** — L/C-Slider, Tuner-Modi, AutoTune-Button, **Fine-Tune-Button**, **K-Tune-Button**, SWR-Live-Anzeige
-2. **Presets** — Tabelle aller gespeicherten Presets (Freq, L, C, Modus, **SWR**), Löschen-Button je Preset; **automatische Aktualisierung 500 ms nach Tune-Abschluss**
-3. **Settings** — WLAN, MQTT, Tune-Parameter, OTA-URL, Log-Level
+1. **Dashboard** — L/C-Slider, Tuner-Modi, AutoTune-Button, **Fine-Tune-Button**, **K-Tune-Button**, SWR-Live-Anzeige, **Shelly Plus1PM Card** (EIN/AUS-Toggle + Leistungsanzeige)
+2. **Presets** — Tabelle aller gespeicherten Presets (Freq, L, C, Modus, **SWR**, **Shelly ●/○**), Shelly-Toggle je Preset, Löschen-Button je Preset; **automatische Aktualisierung 500 ms nach Tune-Abschluss**
+3. **Settings** — WLAN (zwei Netzwerke), MQTT, **Shelly-URL**, Tune-Parameter, OTA-URL, Log-Level
 4. **Maintenance** — OTA Update (lokal + GitHub), Systemneustart
 
 **Sidebar-Navigation:**
@@ -344,11 +348,14 @@ HTML/CSS/JS liegen als separate Dateien in LittleFS (`data/`). Kein externes CDN
 | POST | `/api/autotune` | AutoTune starten / stoppen |
 | POST | `/api/finetune` | Fine-Tune ab aktuellem L/C/Mode starten |
 | POST | `/api/ktune` | K-Tune-Relais: `{"ktune": true/false}` |
-| GET | `/api/presets` | Alle Presets aus RAM-Cache (kein EEPROM-Lesen zur Laufzeit) |
+| GET | `/api/presets` | Alle Presets aus RAM-Cache; Felder: freq_kHz, L, C, mode, swr, **shellyOn** |
+| POST | `/api/presets/{freq}/shelly` | `{"shellyOn": true/false}` — shellyOn-Bit eines Presets setzen |
 | DELETE | `/api/presets/{freq}` | Preset löschen |
 | DELETE | `/api/presets` | Alle Presets löschen |
-| GET | `/api/config` | Aktuelle Konfiguration |
+| GET | `/api/config` | Aktuelle Konfiguration (inkl. **shelly_url**) |
 | POST | `/api/config` | Konfiguration speichern |
+| GET | `/api/shelly/status` | Shelly-Status proxied via ESP32 (vermeidet Browser-CORS) |
+| POST | `/api/shelly/toggle` | Shelly EIN/AUS umschalten (proxied) |
 | POST | `/api/reboot` | Gerät neu starten |
 | GET | `/events` | SSE-Stream (SWR, L, C, mode, **kTune**, freq, tuneState, otaState, …) |
 | POST | `/ota/local/fw` | FW-Upload lokal (multipart, Header `X-MD5`) |
@@ -435,9 +442,8 @@ Zugriff über `AppConfig g_cfg` (`src/cfg/AppConfig.h`), serialisiert mit Arduin
 
 | Parameter | Typ | Default | Beschreibung |
 |---|---|---|---|
-| `wifi_ssid` | string | — | WLAN SSID (Backup; primär NVS) |
-| `wifi_pass` | string | — | WLAN Passwort (Backup; primär NVS) |
 | `mqtt_server` | string | — | MQTT Broker IP/Host |
+| `shelly_url` | string | — | Basis-URL des Shelly Plus1PM (z.B. `http://192.168.100.136`) |
 | `mqtt_port` | uint16 | 1883 | MQTT Port |
 | `mqtt_enabled` | bool | true | MQTT aktiv |
 | `tune_threshold` | float | 18.0 | Min. Return Loss [dB] für Tune-Erfolg |
@@ -526,7 +532,7 @@ Alle Log-Nachrichten (die den konfigurierten Log-Level erreichen) werden zusätz
 | `SET_LC` | L, C, mode | Schreibt alle vier PCF8574 (L + C + mode + kTune aus g_state) |
 | `READ_SWR` | — | SWR-Messung on-demand; Ergebnis in g_state |
 | `SET_KTUNE` | kTune | Schreibt **nur 0x39** (C-Bit 8 + mode-Bits + K-Tune-Bit); 0x38/0x3A/0x3B bleiben unverändert |
-| `SAVE_PRESET` | freq_kHz, L, C, mode | Schreibt Preset in EEPROM (byte-für-byte mit Acknowledge-Polling) und aktualisiert RAM-Cache |
+| `SAVE_PRESET` | freq_kHz, L, C, mode, **shellyOn** | Schreibt Preset in EEPROM (byte-für-byte mit Acknowledge-Polling) und aktualisiert RAM-Cache |
 
 Bei leerem Queue-Puffer (250 ms Timeout) misst taskI2C automatisch SWR im Hintergrund.
 
@@ -624,7 +630,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v2.7 — Implementiert
+## 12. Status v2.8 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -680,3 +686,7 @@ GT-JC-4s/
 | 50 | Fix: RSSI-Update (`g_state.rssi`) erfolgt unabhängig vom MQTT-Verbindungsstatus; MQTT-Publish hat eigenen Timer — RSSI wird im Web-GUI auch ohne erreichbaren MQTT-Broker korrekt angezeigt | ✅ |
 | 51 | Web-GUI Stats-Panel: MQTT-Broker-Verbindungsstatus (`mqttConnected` aus `/api/status`) als `● Online` (grün) / `○ Offline` (orange) angezeigt; `MQTTClient::isConnected()` exponiert `s_mqtt.connected()` an WebServer | ✅ |
 | 52 | WiFi: REST-API `GET /api/wifi` + `POST /api/wifi/0` / `POST /api/wifi/1` für Netzwerkkonfiguration; Web-GUI Settings zeigt zwei separate Netzwerk-Cards mit Static-IP-Toggle; Passwort wird bei GET nicht zurückgegeben (nur schreiben möglich) | ✅ |
+| 53 | Shelly Plus1PM: EIN/AUS-Toggle-Button auf Dashboard; `shelly_url` in `config.json` konfigurierbar; Shelly-API via ESP32 proxied (`GET /api/shelly/status`, `POST /api/shelly/toggle`) — vermeidet Browser-CORS | ✅ |
+| 54 | MQTT 80m-Auto-Shelly: Bei Segment-Wechsel via `JC-4s/freq` wird Shelly automatisch EIN geschaltet wenn 3500–4000 kHz, sonst AUS; Pending-Flag-Muster verhindert HTTP-Call im MQTT-Callback | ✅ |
+| 55 | Preset EEPROM-Format v3: Bit 2 von C_mode = `shellyOn`; AutoTuner setzt Bit beim Speichern automatisch (80m=1, andere=0); rückwärtskompatibel (altes Bit war 0 = Shelly AUS) | ✅ |
+| 56 | Web-GUI Presets-Tabelle: Shelly ●/○ Toggle-Spalte; `POST /api/presets/{freq}/shelly` zum manuellen Umschalten; `GET /api/presets` liefert `shellyOn`-Feld je Preset | ✅ |
