@@ -211,8 +211,9 @@ rho  = Vrev / Vfwd
 Return Loss [dB] = -20 × log10(rho)
 SWR = (1 + rho) / (1 - rho)
 ```
+- ADC-Referenzspannung: **1.6 V** → 1 Count ≈ 6.27 mV (1600 mV / 255)
 - 8 Messungen, Ausreisser ±5% durch Maximalwert ersetzen
-- Mindest-TX-Level: `g_cfg.tune_tx_level` (runtime-konfigurierbar, default 3)
+- Mindest-TX-Level: `g_cfg.tune_tx_level` (runtime-konfigurierbar, default 3; entspricht ~19 mV)
 - Kein TX-Signal (Vfwd < tune_tx_level): swr = 0.0, returnLoss = 0.0 → Web-GUI zeigt „—"
 - Hintergrundmessung: `taskI2C` misst alle ~250 ms bei leerem Befehlspuffer
 
@@ -363,7 +364,7 @@ HTML/CSS/JS liegen als separate Dateien in LittleFS (`data/`). Kein externes CDN
 | GET | `/ota/github/check` | Manifest abrufen, Version vergleichen |
 | POST | `/ota/github/install` | GitHub-OTA starten (FW + FS sequenziell) |
 
-> **Diagnose:** `/api/status` enthält `vfwd` und `vrev` (Rohwerte PCF8591, 0–255; Hardware: AN1=Vfwd, AN0=Vrev). Damit kann die SWR-Brücken-Aussteuerung ohne Serial Monitor überprüft werden.
+> **Diagnose:** `/api/status` enthält `vfwd` und `vrev` (Rohwerte PCF8591, 0–255; Referenzspannung 1.6 V → 1 Count ≈ 6.27 mV; Hardware: AN1=Vfwd, AN0=Vrev). Damit kann die SWR-Brücken-Aussteuerung ohne Serial Monitor überprüft werden.
 
 ### 5.4 OTA Update
 
@@ -690,3 +691,4 @@ GT-JC-4s/
 | 54 | MQTT 80m-Auto-Shelly: Bei Segment-Wechsel via `JC-4s/freq` wird Shelly automatisch EIN geschaltet wenn 3500–4000 kHz, sonst AUS; Pending-Flag-Muster verhindert HTTP-Call im MQTT-Callback | ✅ |
 | 55 | Preset EEPROM-Format v3: Bit 2 von C_mode = `shellyOn`; AutoTuner setzt Bit beim Speichern automatisch (80m=1, andere=0); rückwärtskompatibel (altes Bit war 0 = Shelly AUS) | ✅ |
 | 56 | Web-GUI Presets-Tabelle: Shelly ●/○ Toggle-Spalte; `POST /api/presets/{freq}/shelly` zum manuellen Umschalten; `GET /api/presets` liefert `shellyOn`-Feld je Preset | ✅ |
+| 57 | `LOG_LEVEL_DEFAULT`-Vergleichsrichtung in `Logger.h` korrigiert (`<=` → unbedingte Makros wie [GT-Pod](../../GT-Pod)) — `LOG_ERROR`/`LOG_WARN` wurden beim Standard-Log-Level INFO (2) zuvor als No-Op wegkompiliert, unabhängig vom Laufzeit-Log-Level; die FreeRTOS-Log-Queue (Item 38) war davon nicht betroffen (2026-08-20) | ✅ |
