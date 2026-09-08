@@ -1,6 +1,6 @@
-# GT-JC-4s — Projektspezifikation v2.8
+# GT-JC-4s — Projektspezifikation v2.9
 **Antennenkoppler-Steuerung mit AutoTuner**
-Datum: 2026-08-17 | Autor: HB9CZF | Status: Implementiert / In Test
+Datum: 2026-09-08 | Autor: HB9CZF | Status: Implementiert / In Test
 
 ---
 
@@ -344,7 +344,7 @@ HTML/CSS/JS liegen als separate Dateien in LittleFS (`data/`). Kein externes CDN
 ### 5.3 REST-API (HTTP/1.1)
 | Methode | Pfad | Beschreibung |
 |---|---|---|
-| GET | `/api/status` | Status: L, C, mode, **kTune**, SWR, returnLoss, vfwd, vrev, freq, rssi, tuneState, otaState, … |
+| GET | `/api/status` | Status: L, C, **L_uH, C_pF**, mode, **kTune**, SWR, returnLoss, vfwd, vrev, freq, rssi, tuneState, otaState, … |
 | POST | `/api/tune` | L, C, mode setzen |
 | POST | `/api/autotune` | AutoTune starten / stoppen |
 | POST | `/api/finetune` | Fine-Tune ab aktuellem L/C/Mode starten |
@@ -631,7 +631,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v2.8 — Implementiert
+## 12. Status v2.9 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -691,4 +691,5 @@ GT-JC-4s/
 | 54 | MQTT 80m-Auto-Shelly: Bei Segment-Wechsel via `JC-4s/freq` wird Shelly automatisch EIN geschaltet wenn 3500–4000 kHz, sonst AUS; Pending-Flag-Muster verhindert HTTP-Call im MQTT-Callback | ✅ |
 | 55 | Preset EEPROM-Format v3: Bit 2 von C_mode = `shellyOn`; AutoTuner setzt Bit beim Speichern automatisch (80m=1, andere=0); rückwärtskompatibel (altes Bit war 0 = Shelly AUS) | ✅ |
 | 56 | Web-GUI Presets-Tabelle: Shelly ●/○ Toggle-Spalte; `POST /api/presets/{freq}/shelly` zum manuellen Umschalten; `GET /api/presets` liefert `shellyOn`-Feld je Preset | ✅ |
+| 57 | Web-GUI Stats-Panel: L- und C-Zelle zeigen zusätzlich den physikalischen Wert in µH bzw. pF (`calcLuH()` / `calcCpF()` aus `I2CController`); neue Felder `L_uH` / `C_pF` in `/api/status` und im SSE-Push (`/events`) | ✅ |
 | 57 | `LOG_LEVEL_DEFAULT`-Vergleichsrichtung in `Logger.h` korrigiert (`<=` → unbedingte Makros wie [GT-Pod](../../GT-Pod)) — `LOG_ERROR`/`LOG_WARN` wurden beim Standard-Log-Level INFO (2) zuvor als No-Op wegkompiliert, unabhängig vom Laufzeit-Log-Level; die FreeRTOS-Log-Queue (Item 38) war davon nicht betroffen (2026-08-20) | ✅ |
