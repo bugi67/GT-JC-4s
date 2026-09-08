@@ -111,6 +111,11 @@ static void applyStaticIP(const WifiNetworkConfig& net) {
 
 bool WiFiManager::connectStation(const WifiNetworkConfig& net) {
     WiFi.mode(WIFI_STA);
+    // Mains-powered device with no reason to trade latency for radio power
+    // savings - default modem sleep waits out the AP's beacon/DTIM interval
+    // before answering, which shows up as tens-to-150ms+ jitter on anything
+    // hitting this device (ping, dashboard polling/SSE, MQTT).
+    WiFi.setSleep(false);
     applyStaticIP(net);
     WiFi.begin(net.ssid, net.pass);
     LOG_INFO("WiFi", "Connecting to '%s'%s...", net.ssid, net.useStaticIP ? " (static IP)" : "");

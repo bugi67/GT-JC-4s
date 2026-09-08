@@ -50,7 +50,7 @@ String WebUI::buildStatusJSON() {
     doc["L"]           = g_state.L;
     doc["C"]           = g_state.C;
     doc["L_uH"]        = serialized(String(calcLuH(g_state.L), 2));
-    doc["C_pF"]        = serialized(String(calcCpF(g_state.C), 0));
+    doc["C_pF"]        = (int)lroundf(calcCpF(g_state.C));
     doc["mode"]        = g_state.mode;
     doc["freq_kHz"]    = g_state.freq_kHz;
     doc["swr"]         = serialized(String(g_state.swr, 2));
