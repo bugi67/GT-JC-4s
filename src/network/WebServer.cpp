@@ -45,10 +45,12 @@ void WebUI::sendError(int code, const char* msg) {
 }
 
 String WebUI::buildStatusJSON() {
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<640> doc;
     StateLock lock;
     doc["L"]           = g_state.L;
     doc["C"]           = g_state.C;
+    doc["L_uH"]        = serialized(String(calcLuH(g_state.L), 2));
+    doc["C_pF"]        = serialized(String(calcCpF(g_state.C), 0));
     doc["mode"]        = g_state.mode;
     doc["freq_kHz"]    = g_state.freq_kHz;
     doc["swr"]         = serialized(String(g_state.swr, 2));
@@ -400,13 +402,15 @@ void WebUI::pushSSE() {
         s_sseLastKTune = kTune;
         s_sseLastRssi  = rssi;
         s_sseLastHb    = millis();
-        char buf[352];
+        char buf[416];
         snprintf(buf, sizeof(buf),
             "data:{\"swr\":%.2f,\"returnLoss\":%.1f,"
-            "\"L\":%u,\"C\":%u,\"mode\":%u,\"kTune\":%d,\"freq_kHz\":%u,"
+            "\"L\":%u,\"C\":%u,\"L_uH\":%.2f,\"C_pF\":%.0f,"
+            "\"mode\":%u,\"kTune\":%d,\"freq_kHz\":%u,"
             "\"rssi\":%d,\"tuneState\":%d,\"tuneProgress\":%d,"
             "\"otaState\":%d,\"otaProgress\":%d}\n\n",
-            swr, rl, L, C, mode, kTune ? 1 : 0, freq, rssi,
+            swr, rl, L, C, calcLuH(L), calcCpF(C),
+            mode, kTune ? 1 : 0, freq, rssi,
             (int)ts, tp, (int)os, op);
         s_sseClient.print(buf);
     }
