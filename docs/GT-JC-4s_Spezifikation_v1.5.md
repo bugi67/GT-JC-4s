@@ -1,6 +1,6 @@
-# GT-JC-4s — Projektspezifikation v2.9
+# GT-JC-4s — Projektspezifikation v3.0
 **Antennenkoppler-Steuerung mit AutoTuner**
-Datum: 2026-09-08 | Autor: HB9CZF | Status: Implementiert / In Test
+Datum: 2026-09-10 | Autor: HB9CZF | Status: Implementiert / In Test
 
 ---
 
@@ -631,7 +631,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v2.9 — Implementiert
+## 12. Status v3.0 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -695,3 +695,8 @@ GT-JC-4s/
 | 58 | WLAN-Modem-Sleep deaktiviert (`WiFi.setSleep(false)` in `connectStation()`, greift für Erst-Connect und Reconnect) — der Default-Modem-Sleep wartet das Beacon/DTIM-Intervall des APs ab und verursacht 70–150 ms Ping-/SSE-/MQTT-Jitter auf dem netzgespeisten Gerät | ✅ |
 | 59 | Firmware-Version 1.3.0 als GitHub-Release `v1.3.0` publiziert (Items 57–58 enthalten); OTA-Update via Web-GUI Maintenance oder `POST /ota/github/install` | ✅ |
 | 57 | `LOG_LEVEL_DEFAULT`-Vergleichsrichtung in `Logger.h` korrigiert (`<=` → unbedingte Makros wie [GT-Pod](../../GT-Pod)) — `LOG_ERROR`/`LOG_WARN` wurden beim Standard-Log-Level INFO (2) zuvor als No-Op wegkompiliert, unabhängig vom Laufzeit-Log-Level; die FreeRTOS-Log-Queue (Item 38) war davon nicht betroffen (2026-08-20) | ✅ |
+| 60 | SWR-Messung mit Gleitkomma-Mittelwert statt `uint8_t`-Trunkierung (`measureSWR()`): nahe Anpassung ist Vrev nur 0–3 ADC-Counts, die Ganzzahl-Division quantisierte Return Loss in ~6-dB-Stufen und der Fine-Tuner jagte LSB-Rauschen. `TUNE_MEASUREMENTS` bleibt bei 8 (Coarse-Scan macht ~2000 Messungen — Träger muss die ganze Zeit anliegen) | ✅ |
+| 61 | Fine-Tune-Robustheit: (a) Kandidaten-Bestätigung — die stärksten ~4 Punkte des Laufs werden am Ende mit `FINE_CONFIRM_SAMPLES`=6 Mittelung nachgemessen, der real haltbare gewinnt (verhindert Landung auf Rausch-Spitzen); (b) Plateau-Zentrierung (`PLATEAU_MARGIN_DB`) — flaches Minimum → Mittelpunkt statt Rand; (c) Start-Position als Fallback: Ergebnis nie schlechter als Ausgangspunkt; (d) `FINE_SETTLE_MS`=8 (war 3 — Relais-Prellen verursachte RL-Streuung); WARN wenn bestes RL < Schwelle | ✅ |
+| 62 | Web-UI Reaktionszeit: SSE auf eigenem Listener `SSE_PORT`=81 — der dauerhaft offene EventSource-Socket blockierte den Single-Client-`WebServer` auf :80 sonst je ~5 s (`HTTP_MAX_DATA_WAIT`) pro Runde; `EventSource` in `index.html` zeigt jetzt auf `:81` | ✅ |
+| 63 | Web-UI Reaktionszeit: sämtliche Shelly-HTTP-Aufrufe nach `taskMQTT` verlagert (`SHELLY_HTTP_TIMEOUT_MS`=1200, 60 s Backoff nach Fehler). `/api/shelly/status` liefert nur noch den Cache, `/api/shelly/toggle` ist optimistisch — der synchrone HTTP-Call im Handler fror den Webserver bei nicht erreichbarem Shelly 17 s pro Aufruf ein | ✅ |
+| 64 | Firmware-Version 1.4.0 als GitHub-Release `v1.4.0` publiziert (Items 60–63 enthalten) | ✅ |
