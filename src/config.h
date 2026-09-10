@@ -28,7 +28,9 @@
 #define C_MAX              511
 #define TUNER_MODE_MIN     1
 #define TUNER_MODE_MAX     3
-#define TUNE_MEASUREMENTS  8      // SWR averaging samples
+#define TUNE_MEASUREMENTS  8      // SWR averaging samples per measureSWR() call — keep low: the coarse
+                                  // scan does ~2000 of these and the carrier must be held the whole time.
+                                  // Fine-tune gets its extra precision from measureAvg() re-measurement.
 
 // Inductor values in µH (for L_uH MQTT publish)
 static const float L_UH[] = {
@@ -48,6 +50,9 @@ static const float C_PF[] = {
 #define DEFAULT_COARSE_C        16
 #define FINE_WINDOW_SIZE        9       // ±4 steps around optimum
 #define FINE_MAX_ITER           5
+#define PLATEAU_MARGIN_DB       2.0f    // fine-tune: RL values within this of the best count as one flat null → settle on its midpoint
+#define FINE_SETTLE_MS          8       // relay settle before each fine-tune measurement (was 3 — too short, caused RL scatter)
+#define FINE_CONFIRM_SAMPLES    6       // re-measurements averaged per candidate when picking the final fine-tune result
 
 // ── MQTT topics ───────────────────────────────────────────────────────────────
 #define MQTT_ROOT              "JC-4s"
@@ -88,6 +93,8 @@ static const float C_PF[] = {
 #define MQTT_RECONNECT_MS      5000
 #define RSSI_INTERVAL_MS       10000
 #define WEB_PORT               80
+#define SSE_PORT               81   // Server-Sent Events on a separate socket so the held-open
+                                    // stream never occupies the single-client WebServer on :80
 
 // ── NTP ───────────────────────────────────────────────────────────────────────
 #define NTP_SERVER_DEFAULT    "ntp.metas.ch"
@@ -95,6 +102,8 @@ static const float C_PF[] = {
 
 // ── Shelly ────────────────────────────────────────────────────────────────────
 #define SHELLY_URL_DEFAULT     "http://192.168.100.136"
+#define SHELLY_HTTP_TIMEOUT_MS 1200   // connect + read cap for Shelly HTTP calls (unreachable → fail fast)
+#define SHELLY_POLL_MS         15000  // background refresh interval for the cached Shelly status
 
 // ── OTA ───────────────────────────────────────────────────────────────────────
 #define OTA_MANIFEST_URL_DEFAULT \

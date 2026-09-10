@@ -34,9 +34,11 @@ private:
     static void apiShellyToggle();
     static void apiReboot();
 
-    // SSE — non-blocking: handleSSE() stores client, pushSSE() runs in task loop
-    static void handleSSE();
+    // SSE — runs on its own WiFiServer (SSE_PORT). acceptSSE() picks up new
+    // subscribers, pushSSE() streams updates; both called from the task loop.
+    static void acceptSSE();
     static void pushSSE();
+    static WiFiServer            s_sseServer;
     static WiFiClient            s_sseClient;
     static float                 s_sseLastSwr;
     static TunerState::TuneState s_sseLastTune;

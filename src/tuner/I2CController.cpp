@@ -122,19 +122,24 @@ SWRResult I2CController::measureSWR(uint8_t minVfwd) {
         sumFwd += samples[i];
         sumRev += revSamples[i];
     }
-    uint8_t vfwd = (uint8_t)(sumFwd / TUNE_MEASUREMENTS);
-    uint8_t vrev = (uint8_t)(sumRev / TUNE_MEASUREMENTS);
+    // Keep the averages in floating point. Near a match Vrev is only a count or
+    // two, so truncating to whole ADC counts quantises return loss into ~6 dB
+    // steps and the fine-tuner ends up chasing LSB noise (a stray Vrev=0 reads
+    // as a "perfect" match and stops the search). The fractional average
+    // recovers ~1/N-count resolution.
+    float vfwdAvg = (float)sumFwd / TUNE_MEASUREMENTS;
+    float vrevAvg = (float)sumRev / TUNE_MEASUREMENTS;
 
-    SWRResult res = {0.0f, 0.0f, vfwd, vrev};
-    if (vfwd < minVfwd) return res;   // no TX signal → swr=0 so UI shows "—"
+    SWRResult res = {0.0f, 0.0f, (uint8_t)(vfwdAvg + 0.5f), (uint8_t)(vrevAvg + 0.5f)};
+    if (vfwdAvg < (float)minVfwd) return res;   // no TX signal → swr=0 so UI shows "—"
 
-    float rho = (vfwd > 0) ? (float)vrev / (float)vfwd : 1.0f;
+    float rho = (vfwdAvg > 0.0f) ? vrevAvg / vfwdAvg : 1.0f;
     if (rho >= 1.0f) rho = 0.999f;
     res.returnLoss = -20.0f * log10f(rho);
     res.swr = (1.0f + rho) / (1.0f - rho);
 
-    LOG_DEBUG("I2C", "SWR meas: vfwd=%d vrev=%d rho=%.3f SWR=%.2f RL=%.1fdB",
-              vfwd, vrev, rho, res.swr, res.returnLoss);
+    LOG_DEBUG("I2C", "SWR meas: vfwd=%.2f vrev=%.2f rho=%.4f SWR=%.2f RL=%.1fdB",
+              vfwdAvg, vrevAvg, rho, res.swr, res.returnLoss);
     return res;
 }
 

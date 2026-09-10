@@ -11,19 +11,62 @@
 static WiFiClient   s_wifiClient;
 static PubSubClient s_mqtt(s_wifiClient);
 
-// ── Shelly auto-switch ────────────────────────────────────────────────────────
-static volatile bool s_shellyPending = false;
-static volatile bool s_shellyTarget  = false;
+// ── Shelly power switch ──────────────────────────────────────────────────────
+// All Shelly HTTP happens in taskMQTT (this file). The web handlers must never
+// call it: an unreachable Shelly blocks for the whole TCP connect timeout and
+// would freeze the single-client :80 web server.
+static volatile bool s_shellyPending      = false;   // MQTT 80m auto-switch
+static volatile bool s_shellyTarget       = false;
+static volatile bool s_shellyTogglePending = false;  // WUI toggle button
+static volatile bool s_shellyRefreshReq    = true;   // poll status once at boot
+static volatile bool s_shellyValid         = false;  // cache holds a real reading
+static volatile bool s_shellyOn            = false;
+static uint32_t      s_shellyLastPoll      = 0;
+static uint32_t      s_shellyFailUntil     = 0;      // back off polling after a failure
+
+static bool shellyHttpGet(const char* path, String& body) {
+    if (strlen(g_cfg.shelly_url) == 0) return false;
+    HTTPClient http;
+    http.begin(String(g_cfg.shelly_url) + path);
+    http.setConnectTimeout(SHELLY_HTTP_TIMEOUT_MS);
+    http.setTimeout(SHELLY_HTTP_TIMEOUT_MS);
+    int code = http.GET();
+    body = (code == 200) ? http.getString() : String();
+    http.end();
+    return code == 200;
+}
 
 static void shellyApply(bool on) {
-    if (strlen(g_cfg.shelly_url) == 0) return;
-    HTTPClient http;
-    String url = String(g_cfg.shelly_url) + "/rpc/Switch.Set?id=0&on=" + (on ? "true" : "false");
-    http.begin(url);
-    http.setTimeout(3000);
-    int code = http.GET();
-    http.end();
-    LOG_INFO("MQTT", "Shelly %s (HTTP %d)", on ? "ON" : "OFF", code);
+    String dummy;
+    bool ok = shellyHttpGet(on ? "/rpc/Switch.Set?id=0&on=true"
+                               : "/rpc/Switch.Set?id=0&on=false", dummy);
+    LOG_INFO("MQTT", "Shelly set %s (%s)", on ? "ON" : "OFF", ok ? "ok" : "unreachable");
+}
+
+static void shellyPollStatus() {
+    s_shellyLastPoll = millis();
+    String body;
+    if (shellyHttpGet("/rpc/Switch.GetStatus?id=0", body) && body.indexOf("\"output\"") >= 0) {
+        s_shellyOn    = body.indexOf("\"output\":true") >= 0;
+        if (!s_shellyValid) LOG_INFO("MQTT", "Shelly reachable (output=%s)", s_shellyOn ? "on" : "off");
+        s_shellyValid    = true;
+        s_shellyFailUntil = 0;
+    } else {
+        if (s_shellyValid || s_shellyFailUntil == 0)
+            LOG_WARN("MQTT", "Shelly unreachable — backing off 60 s");
+        s_shellyValid    = false;
+        s_shellyFailUntil = millis() + 60000;   // stop hammering an absent Shelly
+    }
+}
+
+bool MQTTClient::shellyCachedValid()     { return s_shellyValid; }
+bool MQTTClient::shellyCachedOn()        { return s_shellyOn; }
+void MQTTClient::shellyRequestRefresh()  { s_shellyRefreshReq = true; }
+bool MQTTClient::shellyToggleOptimistic() {
+    bool predicted = !s_shellyOn;
+    s_shellyOn = predicted;              // optimistic; corrected by the follow-up poll
+    s_shellyTogglePending = true;
+    return predicted;
 }
 
 // ── MQTT log queue ────────────────────────────────────────────────────────────
@@ -281,11 +324,23 @@ void MQTTClient::taskMQTT(void* param) {
                 }
             }
         }
-        // Apply pending Shelly command (set in onMessage; executed here to avoid
-        // blocking the MQTT callback with an HTTP call)
-        if (s_shellyPending) {
+        // Shelly HTTP — all of it runs here, never in a web handler.
+        if (s_shellyPending) {          // MQTT 80m auto-switch
             s_shellyPending = false;
             shellyApply(s_shellyTarget);
+            s_shellyRefreshReq = true;
+        }
+        if (s_shellyTogglePending) {    // WUI toggle button
+            s_shellyTogglePending = false;
+            String dummy;
+            bool ok = shellyHttpGet("/rpc/Switch.Toggle?id=0", dummy);
+            LOG_INFO("MQTT", "Shelly toggle (%s)", ok ? "ok" : "unreachable");
+            s_shellyRefreshReq = true;
+        }
+        if (strlen(g_cfg.shelly_url) > 0 && millis() > s_shellyFailUntil &&
+            (s_shellyRefreshReq || millis() - s_shellyLastPoll > SHELLY_POLL_MS)) {
+            s_shellyRefreshReq = false;
+            shellyPollStatus();
         }
 
         vTaskDelay(pdMS_TO_TICKS(50));

@@ -217,12 +217,65 @@ void AutoTuner::mediumScan(uint16_t& bestL, uint16_t& bestC, uint8_t mode) {
 
 // ── Phase 3: Fine-step ───────────────────────────────────────────────────────
 
+namespace {
+struct FineStep { uint16_t L, C; float swr, rl; };
+
+// Collapse a completed sweep onto the value to settle on. A real match is
+// rarely a single point — a span of adjacent settings all read within
+// PLATEAU_MARGIN_DB of the peak. Settle on that span's midpoint so the result
+// sits in the centre of the null (most tolerant of drift), not on whichever
+// edge happened to read highest. `coordIsL` picks the L or C field; `bounded`
+// is cleared when the span runs to a window edge (the true optimum may lie
+// beyond it, so the caller should keep iterating rather than stop early).
+uint16_t plateauCentre(const FineStep* s, int n, uint16_t peak, float peakRL,
+                       bool coordIsL, bool& bounded) {
+    auto coord = [&](int i) { return coordIsL ? s[i].L : s[i].C; };
+    int pk = 0;
+    for (int i = 0; i < n; i++) if (coord(i) == peak) { pk = i; break; }
+    int lo = pk, hi = pk;
+    while (lo > 0     && s[lo - 1].rl >= peakRL - PLATEAU_MARGIN_DB) lo--;
+    while (hi < n - 1 && s[hi + 1].rl >= peakRL - PLATEAU_MARGIN_DB) hi++;
+    bounded = (lo > 0 && hi < n - 1);
+    return coord((lo + hi) / 2);
+}
+
+// Best few L/C points seen across the whole fine-tune. The iterative L/C walk
+// explores, but single SWR readings scatter several dB (and occasionally 10+),
+// so the walk can end on a point far worse than one it passed through. We keep
+// the strongest handful — kept spatially diverse so they are real alternatives,
+// not three noisy neighbours — and re-measure them at the end to choose.
+struct FineCand { uint16_t L, C; float rl; bool used; };
+
+void considerCand(FineCand* c, int n, uint16_t L, uint16_t C, float rl) {
+    for (int i = 0; i < n; i++) {
+        if (!c[i].used) continue;
+        if (abs((int)L - (int)c[i].L) <= 2 && abs((int)C - (int)c[i].C) <= 2) {
+            if (rl > c[i].rl) { c[i].L = L; c[i].C = C; c[i].rl = rl; }
+            return;
+        }
+    }
+    int weak = -1;
+    for (int i = 0; i < n; i++) {
+        if (!c[i].used) { c[i] = {L, C, rl, true}; return; }
+        if (weak < 0 || c[i].rl < c[weak].rl) weak = i;
+    }
+    if (rl > c[weak].rl) c[weak] = {L, C, rl, true};
+}
+}  // namespace
+
 void AutoTuner::fineTune(uint16_t& bestL, uint16_t& bestC, uint8_t mode, bool verbose) {
     I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
     int half = FINE_WINDOW_SIZE / 2;
 
-    struct Step { uint16_t L, C; float swr, rl; };
-    Step steps[FINE_WINDOW_SIZE];
+    FineStep steps[FINE_WINDOW_SIZE];
+    FineCand cand[4] = {};
+
+    // Confirmed baseline: the position we start from. The walk is only allowed
+    // to move the result away from here if a re-measured candidate genuinely
+    // beats it — so fine-tune can never hand back something worse than the start.
+    const uint16_t startL = bestL, startC = bestC;
+    const float    startRL = measureAvg(startL, startC, mode, FINE_CONFIRM_SAMPLES);
+    considerCand(cand, 4, startL, startC, startRL);
 
     for (int iter = 0; iter < FINE_MAX_ITER; iter++) {
         bool improved = false;
@@ -234,14 +287,17 @@ void AutoTuner::fineTune(uint16_t& bestL, uint16_t& bestC, uint8_t mode, bool ve
         for (int dl = -half; dl <= half; dl++) {
             int l = (int)bestL + dl;
             if (l < 0 || l > L_MAX) continue;
-            setLCAndWait((uint16_t)l, bestC, mode, 3);
+            setLCAndWait((uint16_t)l, bestC, mode, FINE_SETTLE_MS);
             xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
             vTaskDelay(pdMS_TO_TICKS(15));
             float rl  = getRL();
             float swr = stateGet(&TunerState::swr);
             if (rl > bestRL) { bestRL = rl; newL = (uint16_t)l; }
-            if (verbose) steps[nL++] = { (uint16_t)l, bestC, swr, rl };
+            considerCand(cand, 4, (uint16_t)l, bestC, rl);
+            steps[nL++] = { (uint16_t)l, bestC, swr, rl };
         }
+        bool lBounded = true;
+        newL = plateauCentre(steps, nL, newL, bestRL, true, lBounded);
         if (newL != bestL) { bestL = newL; improved = true; }
 
         if (verbose) {
@@ -254,10 +310,10 @@ void AutoTuner::fineTune(uint16_t& bestL, uint16_t& bestC, uint8_t mode, bool ve
                     steps[i].L == bestL ? " <--" : "");
         }
 
-        // RL > 60 dB means Vrev=0 (ADC noise floor) — perfect match.
-        // Rescanning C from this plateau edge causes drift to the first
-        // equal-RL position in the new window, which may be less stable.
-        if (bestRL > 60.0f) {
+        // Perfect match (Vrev ≈ 0) on a bounded null — nothing to gain from
+        // rescanning C. If the null ran to a window edge, keep going: the real
+        // optimum may be further out.
+        if (bestRL > 60.0f && lBounded) {
             reportProgress((uint8_t)(80 + iter * 4));
             break;
         }
@@ -269,14 +325,17 @@ void AutoTuner::fineTune(uint16_t& bestL, uint16_t& bestC, uint8_t mode, bool ve
         for (int dc = -half; dc <= half; dc++) {
             int c = (int)bestC + dc;
             if (c < 0 || c > C_MAX) continue;
-            setLCAndWait(bestL, (uint16_t)c, mode, 3);
+            setLCAndWait(bestL, (uint16_t)c, mode, FINE_SETTLE_MS);
             xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
             vTaskDelay(pdMS_TO_TICKS(15));
             float rl  = getRL();
             float swr = stateGet(&TunerState::swr);
             if (rl > bestRLC) { bestRLC = rl; newC = (uint16_t)c; }
-            if (verbose) steps[nC++] = { bestL, (uint16_t)c, swr, rl };
+            considerCand(cand, 4, bestL, (uint16_t)c, rl);
+            steps[nC++] = { bestL, (uint16_t)c, swr, rl };
         }
+        bool cBounded = true;
+        newC = plateauCentre(steps, nC, newC, bestRLC, false, cBounded);
         if (newC != bestC) { bestC = newC; improved = true; }
 
         if (verbose) {
@@ -290,9 +349,53 @@ void AutoTuner::fineTune(uint16_t& bestL, uint16_t& bestC, uint8_t mode, bool ve
         }
 
         reportProgress((uint8_t)(80 + iter * 4));   // 80-100%
-        if (!improved || bestRLC > 60.0f) break;
+        if (!improved || (bestRLC > 60.0f && cBounded)) break;
     }
-    LOG_INFO("AutoTuner", "Fine done: L=%u C=%u mode=%u", bestL, bestC, mode);
+
+    // Re-measure the walk endpoint and every surviving candidate with heavier
+    // averaging; keep the start position as the fallback so we never regress.
+    uint16_t pickL = startL, pickC = startC;
+    float pickRL = startRL;
+    if (verbose)
+        LOG_INFO("AutoTuner", "Confirm: L=%3u C=%3u  start          re-meas RL=%5.1f dB",
+                 startL, startC, startRL);
+
+    float walkRL = measureAvg(bestL, bestC, mode, FINE_CONFIRM_SAMPLES);
+    if (verbose)
+        LOG_INFO("AutoTuner", "Confirm: L=%3u C=%3u  walk-end       re-meas RL=%5.1f dB",
+                 bestL, bestC, walkRL);
+    if (walkRL > pickRL) { pickRL = walkRL; pickL = bestL; pickC = bestC; }
+
+    for (int i = 0; i < 4; i++) {
+        if (!cand[i].used) continue;
+        if ((cand[i].L == bestL && cand[i].C == bestC) ||
+            (cand[i].L == startL && cand[i].C == startC)) continue;
+        float rl = measureAvg(cand[i].L, cand[i].C, mode, FINE_CONFIRM_SAMPLES);
+        if (verbose)
+            LOG_INFO("AutoTuner", "Confirm: L=%3u C=%3u  walk RL=%5.1f  re-meas RL=%5.1f dB",
+                     cand[i].L, cand[i].C, cand[i].rl, rl);
+        if (rl > pickRL) { pickRL = rl; pickL = cand[i].L; pickC = cand[i].C; }
+    }
+    bestL = pickL; bestC = pickC;
+    if (pickRL < DEFAULT_TUNE_THRESHOLD)
+        LOG_WARN("AutoTuner", "Fine-tune: best only %.1f dB (<%.0f) — mismatch too large here, or no carrier",
+                 pickRL, DEFAULT_TUNE_THRESHOLD);
+    LOG_INFO("AutoTuner", "Fine done: L=%u C=%u mode=%u (RL=%.1f dB)", bestL, bestC, mode, pickRL);
+}
+
+// Set L/C/mode, settle, then average `samples` SWR reads → return mean return loss.
+float AutoTuner::measureAvg(uint16_t L, uint16_t C, uint8_t mode, int samples) {
+    I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
+    setLCAndWait(L, C, mode, 20);
+    float sum = 0.0f; int n = 0;
+    for (int i = 0; i < samples; i++) {
+        xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
+        vTaskDelay(pdMS_TO_TICKS(20));
+        float rl = getRL();
+        if (rl > 80.0f) rl = 80.0f;   // clamp "perfect" (Vrev≈0) so one read can't dominate the mean
+        sum += rl; n++;
+    }
+    return n ? sum / n : -999.0f;
 }
 
 // ── Main tune sequence ───────────────────────────────────────────────────────

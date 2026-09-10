@@ -1005,7 +1005,8 @@ setInterval(shellyPoll, 10000);
 let g_evtSrc = null;
 function startSSE() {
   if (g_evtSrc) { g_evtSrc.close(); g_evtSrc = null; }
-  const src = new EventSource('/events');
+  // SSE runs on its own port so the held-open stream doesn't block the :80 server
+  const src = new EventSource(`${location.protocol}//${location.hostname}:81/events`);
   g_evtSrc = src;
   src.onmessage = e => { Object.assign(state, JSON.parse(e.data)); syncDashboard(); };
   src.onerror = () => { src.close(); g_evtSrc = null; setTimeout(startSSE, 2000); };
@@ -1223,7 +1224,7 @@ applyTheme();
 applyI18n();
 fetchStatus();
 startSSE();
-setInterval(fetchStatus, 5000);
+setInterval(fetchStatus, 15000);   // safety net; SSE (:81) carries live updates
 </script>
 </body>
 </html>

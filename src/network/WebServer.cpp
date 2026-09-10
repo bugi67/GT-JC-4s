@@ -17,7 +17,8 @@
 
 ::WebServer WebUI::s_server(WEB_PORT);
 
-// SSE state — one active client, pushed non-blocking from task loop
+// SSE state — one active client on its own listener, pushed from the task loop
+WiFiServer            WebUI::s_sseServer(SSE_PORT);
 WiFiClient            WebUI::s_sseClient;
 float                 WebUI::s_sseLastSwr  = -1.0f;
 TunerState::TuneState WebUI::s_sseLastTune = TunerState::TuneState::IDLE;
@@ -269,28 +270,16 @@ void WebUI::apiConfigPost() {
 
 // ── Shelly proxy ──────────────────────────────────────────────────────────────
 
-static String shellyRpc(const char* path) {
-    if (strlen(g_cfg.shelly_url) == 0) return "";
-    HTTPClient http;
-    String url = String(g_cfg.shelly_url) + path;
-    http.begin(url);
-    http.setTimeout(3000);
-    int code = http.GET();
-    String body = (code == 200) ? http.getString() : "";
-    http.end();
-    return body;
-}
-
 void WebUI::apiShellyStatus() {
-    String body = shellyRpc("/rpc/Switch.GetStatus?id=0");
-    if (body.length() == 0) { sendError(502, "Shelly unreachable"); return; }
-    sendJSON(200, body);
+    // Cached — the actual Shelly HTTP runs in taskMQTT. Never block here.
+    MQTTClient::shellyRequestRefresh();
+    if (!MQTTClient::shellyCachedValid()) { sendError(502, "Shelly unreachable"); return; }
+    sendJSON(200, MQTTClient::shellyCachedOn() ? "{\"output\":true}" : "{\"output\":false}");
 }
 
 void WebUI::apiShellyToggle() {
-    String body = shellyRpc("/rpc/Switch.Toggle?id=0");
-    if (body.length() == 0) { sendError(502, "Shelly unreachable"); return; }
-    sendJSON(200, body);
+    bool predicted = MQTTClient::shellyToggleOptimistic();
+    sendJSON(200, predicted ? "{\"output\":true}" : "{\"output\":false}");
 }
 
 void WebUI::apiWifiGet() {
@@ -335,12 +324,31 @@ void WebUI::apiWifiPost() {
 }
 
 // ── SSE ───────────────────────────────────────────────────────────────────────
-// Non-blocking: handleSSE() just sends headers and stores the client.
-// pushSSE() is called from taskWebServer every loop iteration.
+// SSE has its own listener (SSE_PORT). A browser's EventSource holds this socket
+// open indefinitely; on the single-client :80 WebServer that would block every
+// other request for HTTP_MAX_DATA_WAIT (~5 s) at a time. acceptSSE() and
+// pushSSE() are both driven from the task loop.
 
-void WebUI::handleSSE() {
-    s_sseClient   = s_server.client();
-    // Force full send on first push
+void WebUI::acceptSSE() {
+    WiFiClient c = s_sseServer.accept();
+    if (!c) return;
+
+    // Drain the incoming HTTP request (any path — every connection here is an
+    // SSE subscription). Bounded so a slow client can't stall the web task.
+    uint32_t t0 = millis();
+    int nl = 0;
+    while (c.connected() && millis() - t0 < 250) {
+        int ch = c.read();
+        if (ch < 0) { vTaskDelay(pdMS_TO_TICKS(2)); continue; }
+        if (ch == '\n') { if (++nl == 2) break; }
+        else if (ch != '\r') nl = 0;
+    }
+
+    if (s_sseClient) s_sseClient.stop();   // one subscriber; replace any previous
+    s_sseClient = c;
+    s_sseClient.setNoDelay(true);
+
+    // Force a full push on the next pushSSE()
     s_sseLastSwr  = -1.0f;
     s_sseLastTune = (TunerState::TuneState)0xFF;
     s_sseLastOta  = (TunerState::OtaState)0xFF;
@@ -360,7 +368,8 @@ void WebUI::handleSSE() {
 }
 
 void WebUI::pushSSE() {
-    if (!s_sseClient || !s_sseClient.connected()) return;
+    if (!s_sseClient) return;
+    if (!s_sseClient.connected()) { s_sseClient.stop(); s_sseClient = WiFiClient(); return; }
 
     float swr, rl; uint16_t L, C, freq; uint8_t tp, op, mode; int8_t rssi; bool kTune;
     TunerState::TuneState ts; TunerState::OtaState os;
@@ -516,7 +525,8 @@ bool WebUI::begin() {
     s_server.on("/api/shelly/status",  HTTP_GET,    apiShellyStatus);
     s_server.on("/api/shelly/toggle",  HTTP_POST,   apiShellyToggle);
     s_server.on("/api/reboot",         HTTP_POST,   apiReboot);
-    s_server.on("/events",           HTTP_GET,    handleSSE);
+    s_sseServer.begin();
+    s_sseServer.setNoDelay(true);
     s_server.on("/ota/local/fw",     HTTP_POST,   [](){}, otaLocalFW);
     s_server.on("/ota/local/fs",     HTTP_POST,   [](){}, otaLocalFS);
     s_server.on("/ota/github/check", HTTP_GET,    otaGitHubCheck);
@@ -538,7 +548,7 @@ bool WebUI::begin() {
         }
     });
     s_server.begin();
-    LOG_INFO("WebServer", "HTTP server started on port %d", WEB_PORT);
+    LOG_INFO("WebServer", "HTTP server on port %d, SSE on port %d", WEB_PORT, SSE_PORT);
     return true;
 }
 
@@ -546,6 +556,7 @@ void WebUI::taskWebServer(void* param) {
     (void)param;
     for (;;) {
         s_server.handleClient();
+        acceptSSE();
         pushSSE();
         vTaskDelay(pdMS_TO_TICKS(5));
     }

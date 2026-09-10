@@ -14,6 +14,8 @@ private:
     static void setLCAndWait(uint16_t L, uint16_t C, uint8_t mode, uint32_t settleMs = 5);
     static float getSWR();
     static float getRL();
+    // Apply L/C/mode, settle, average `samples` SWR reads → mean return loss (dB)
+    static float measureAvg(uint16_t L, uint16_t C, uint8_t mode, int samples);
 
     static bool isAbortRequested();
     static void reportProgress(uint8_t pct);
