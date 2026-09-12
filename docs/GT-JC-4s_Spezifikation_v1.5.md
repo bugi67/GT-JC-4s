@@ -1,4 +1,4 @@
-# GT-JC-4s — Projektspezifikation v3.2
+# GT-JC-4s — Projektspezifikation v3.3
 **Antennenkoppler-Steuerung mit AutoTuner**
 Datum: 2026-09-12 | Autor: HB9CZF | Status: Implementiert / In Test
 
@@ -635,7 +635,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v3.2 — Implementiert
+## 12. Status v3.3 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -706,3 +706,4 @@ GT-JC-4s/
 | 64 | Firmware-Version 1.4.0 als GitHub-Release `v1.4.0` publiziert (Items 60–63 enthalten) | ✅ |
 | 65 | Neue Hardware-Sense-Eingänge auf 0x39.P4-P7 (`SenseInputs`): F-PWR (Leistung am Koppler anliegend), Z-HIGH (Antennenimpedanz > 50 Ω), Z-LOW (< 50 Ω), PHASE (Vorzeichen U/I-Phasendifferenz, Polarität noch nicht kalibriert). `PCF8574_C_HI_INPUT_MASK`=0xF0 wird bei jedem Schreibzugriff auf 0x39 (`setLC()`, `SET_KTUNE`, Boot-Init) mit eingeblendet, damit die quasi-bidirektionalen Pins freigegeben bleiben — vorher wurden P4-P7 bei jedem Relais-Kommando aktiv auf LOW gezogen. Rohwerte (unkalibriert) in `/api/status`, SSE-Push, Serial `status`-Kommando und Web-UI Stats-Panel „Sense Inputs (raw)" — bewusst noch nicht in die AutoTuner-Logik eingebunden, bis die PHASE-Polarität feststeht | ✅ |
 | 66 | Sense-Inputs als MQTT-Feedback: `JC-4s/feedback/fpwr`, `/zhigh`, `/zlow`, `/phase` (roh, unkalibriert), publiziert von `publishStatus()`. Die bestehende Änderungserkennung in `taskMQTT` (bisher L/C/mode/kTune/freq) berücksichtigt jetzt auch die 4 Sense-Bits — während Fine-Tune/AutoTune ändert sich L oder C praktisch bei jedem Schritt, wodurch die Sense-Werte automatisch pro Schritt mitpubliziert werden (kein Zusatzcode in `AutoTuner.cpp` nötig) | ✅ |
+| 67 | Fix `runTune()` Phase 2.5 (Medium-Scan-Kandidatenvergleich): die Top-3-Coarse-Kandidaten + Inter-L-Kandidat wurden mit je einer einzelnen, ungemittelten Messung (5 ms Settle, 1 Messwert) verglichen — dieselbe Rauschanfälligkeit, die für die Fine-Tune-Bestätigung bereits behoben wurde (Item 61), war hier noch vorhanden. Reproduzierbar auf Hardware nachgewiesen (25 Ω resistive Last, 3530 kHz): `mediumScan()` fand einen echten guten C@TRX-Kandidaten (L=8 C=120 mode=1, RL 20,4 dB), die Einzelmessung bewertete ihn aber schlechter als einen mittelmäßigen C@ANT-Kandidaten → AutoTune endete zweimal reproduzierbar bei C@ANT/SWR 2,66 statt beim bekannten C@TRX-Match/SWR 1,00. Beide Vergleichsstellen nutzen jetzt `measureAvg()` (6-fache Mittelung, wie bei Fine-Tune) — nach dem Fix fand AutoTune auf Anhieb L=4 C=129 mode=1, SWR=1,00 | ✅ |
