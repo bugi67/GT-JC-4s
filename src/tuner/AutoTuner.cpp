@@ -424,17 +424,16 @@ bool AutoTuner::runTune(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
     {
         float overallRL = -999.0f;
 
-        // Top-3 from coarse scan
+        // Top-3 from coarse scan. Each candidate is re-measured with averaging
+        // (not a single shot) before comparing — mediumScan()'s own hill-climb
+        // can land on a genuinely good, narrow point that a single noisy
+        // READ_SWR then talks us out of, handing the tune to a worse candidate.
         for (int ci = 0; ci < s_nCands; ci++) {
             uint16_t tL = s_cands[ci].L, tC = s_cands[ci].C; uint8_t tMode = s_cands[ci].mode;
             LOG_INFO("AutoTuner", "Medium scan %d/%d from L=%u C=%u mode=%u", ci+1, s_nCands, tL, tC, tMode);
             mediumScan(tL, tC, tMode);
             if (isAbortRequested()) return false;
-            setLCAndWait(tL, tC, tMode, 5);
-            I2CCommand mCmd2 = {I2CCmd::READ_SWR, 0, 0, 0};
-            xQueueSend(g_i2cCmdQueue, &mCmd2, portMAX_DELAY);
-            vTaskDelay(pdMS_TO_TICKS(20));
-            float rl = getRL();
+            float rl = measureAvg(tL, tC, tMode, FINE_CONFIRM_SAMPLES);
             if (rl > overallRL) { overallRL = rl; bestL = tL; bestC = tC; bestMode = tMode; }
         }
 
@@ -449,11 +448,7 @@ bool AutoTuner::runTune(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
             LOG_INFO("AutoTuner", "Medium scan (inter-L) from L=%u C=%u mode=%u", ilL, ilC, ilMode);
             mediumScan(ilL, ilC, ilMode);
             if (isAbortRequested()) return false;
-            setLCAndWait(ilL, ilC, ilMode, 5);
-            I2CCommand mCmd3 = {I2CCmd::READ_SWR, 0, 0, 0};
-            xQueueSend(g_i2cCmdQueue, &mCmd3, portMAX_DELAY);
-            vTaskDelay(pdMS_TO_TICKS(20));
-            float rl = getRL();
+            float rl = measureAvg(ilL, ilC, ilMode, FINE_CONFIRM_SAMPLES);
             if (rl > overallRL) { overallRL = rl; bestL = ilL; bestC = ilC; bestMode = ilMode; }
             LOG_INFO("AutoTuner", "Medium inter-L result: L=%u C=%u mode=%u RL=%.1f dB", ilL, ilC, ilMode, rl);
         }
