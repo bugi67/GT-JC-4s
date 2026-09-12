@@ -37,6 +37,12 @@
 //   mode 2 (C@ANT): P1=0, P2=0
 //   mode 3 (no C):  P1=0, P2=1  (K9+K10 inverted)
 //   K-Tune relay:   0x39.P3     (active = bit 3 set)
+//
+// 0x39.P4-P7 = sense inputs from the tuning-circuit bridge (F-PWR/Z-HIGH/
+// Z-LOW/PHASE — see SenseInputs). These must always be written '1' (never
+// driven low like P0-P3) so the PCF8574's quasi-bidirectional pins release
+// and let the external circuit pull them — hence PCF8574_C_HI_INPUT_MASK
+// is OR'd into every write to this chip.
 
 bool I2CController::init() {
     Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, (uint32_t)I2C_FREQ_HZ);
@@ -78,6 +84,7 @@ void I2CController::setLC(uint16_t L, uint16_t C, uint8_t mode) {
     if (mode == 1) c39 |= 0x02;          // K1
     if (mode != 2) c39 |= 0x04;          // K9+K10 inverted: active when NOT in C@ANT mode
     if (g_state.kTune)  c39 |= 0x08;    // K-Tune at P3
+    c39 |= PCF8574_C_HI_INPUT_MASK;      // release P4-P7 (sense inputs) — never drive them low
 
     writePCF8574(ADDR_PCF8574_C_LO, c38);
     writePCF8574(ADDR_PCF8574_C_HI, c39);
@@ -143,6 +150,17 @@ SWRResult I2CController::measureSWR(uint8_t minVfwd) {
     return res;
 }
 
+SenseInputs I2CController::readSenseInputs() {
+    Wire.requestFrom(ADDR_PCF8574_C_HI, (uint8_t)1);
+    uint8_t v = Wire.available() ? Wire.read() : 0xFF;
+    return SenseInputs{
+        (v & 0x10) != 0,   // P4 = F-PWR
+        (v & 0x20) != 0,   // P5 = Z-HIGH
+        (v & 0x40) != 0,   // P6 = Z-LOW
+        (v & 0x80) != 0,   // P7 = PHASE
+    };
+}
+
 void I2CController::taskI2C(void* param) {
     (void)param;
 
@@ -166,7 +184,8 @@ void I2CController::taskI2C(void* param) {
     vTaskDelay(pdMS_TO_TICKS(150));
 
     LOG_INFO("I2C", "Relay init step 4/4: C_HI (0x39)");
-    writePCF8574(ADDR_PCF8574_C_HI, 0x06);   // C bit 8 off; K1 + K9/K10 on (C@TRX mode)
+    // C bit 8 off; K1 + K9/K10 on (C@TRX mode); P4-P7 released for sense inputs
+    writePCF8574(ADDR_PCF8574_C_HI, 0x06 | PCF8574_C_HI_INPUT_MASK);
     vTaskDelay(pdMS_TO_TICKS(150));
 
     {
@@ -185,10 +204,14 @@ void I2CController::taskI2C(void* param) {
     uint8_t rb3A = readPCF(ADDR_PCF8574_L_HI);
     uint8_t rb38 = readPCF(ADDR_PCF8574_C_LO);
     uint8_t rb39 = readPCF(ADDR_PCF8574_C_HI);
-    LOG_INFO("I2C", "PCF8574 readback: 0x3B=0x%02X(exp 0x04) 0x3A=0x%02X(exp 0x00) 0x38=0x%02X(exp 0x00) 0x39=0x%02X(exp 0x06)",
+    // 0x39.P4-P7 reflect the external sense circuit now, not our write, so only
+    // the output bits (P0-P3) are checked against the expected value.
+    LOG_INFO("I2C", "PCF8574 readback: 0x3B=0x%02X(exp 0x04) 0x3A=0x%02X(exp 0x00) 0x38=0x%02X(exp 0x00) 0x39=0x%02X(exp low nibble 0x6)",
              rb3B, rb3A, rb38, rb39);
-    bool initOk = (rb3B == 0x04) && (rb3A == 0x00) && (rb38 == 0x00) && (rb39 == 0x06);
+    bool initOk = (rb3B == 0x04) && (rb3A == 0x00) && (rb38 == 0x00) && ((rb39 & 0x0F) == 0x06);
     LOG_INFO("I2C", "Hardware initialised: L=0 C=0 mode=C@TRX %s", initOk ? "[OK]" : "[MISMATCH - chips may have reset!]");
+    LOG_INFO("I2C", "Sense inputs at boot: F-PWR=%d Z-HIGH=%d Z-LOW=%d PHASE=%d (raw, polarity uncalibrated)",
+             (rb39 >> 4) & 1, (rb39 >> 5) & 1, (rb39 >> 6) & 1, (rb39 >> 7) & 1);
 
     // Drain any commands that accumulated in the queue during the ~600 ms init
     // window (typically MQTT retained-message replays). Without this flush they
@@ -213,11 +236,16 @@ void I2CController::taskI2C(void* param) {
                 g_state.mode = cmd.mode;
             } else if (cmd.cmd == I2CCmd::READ_SWR) {
                 SWRResult r = measureSWR(g_cfg.tune_tx_level);
+                SenseInputs s = readSenseInputs();
                 StateLock lock;
                 g_state.swr        = r.swr;
                 g_state.returnLoss = r.returnLoss;
                 g_state.vfwd       = r.vfwd;
                 g_state.vrev       = r.vrev;
+                g_state.fPwr       = s.fPwr;
+                g_state.zHigh      = s.zHigh;
+                g_state.zLow       = s.zLow;
+                g_state.phase      = s.phase;
             } else if (cmd.cmd == I2CCmd::SET_KTUNE) {
                 uint16_t C; uint8_t mode;
                 {
@@ -230,6 +258,7 @@ void I2CController::taskI2C(void* param) {
                 if (mode == 1)     c39 |= 0x02;
                 if (mode != 2)     c39 |= 0x04;
                 if (cmd.kTune)     c39 |= 0x08;
+                c39 |= PCF8574_C_HI_INPUT_MASK;   // release P4-P7 (sense inputs)
                 writePCF8574(ADDR_PCF8574_C_HI, c39);
                 LOG_INFO("I2C", "K-Tune relay %s (0x39=0x%02X)", cmd.kTune ? "ON" : "OFF", c39);
             } else if (cmd.cmd == I2CCmd::SAVE_PRESET) {
@@ -245,14 +274,19 @@ void I2CController::taskI2C(void* param) {
                 }
             }
         } else {
-            // Queue idle: background SWR measurement every ~250 ms
+            // Queue idle: background SWR + sense-input refresh every ~250 ms
             SWRResult r = measureSWR(g_cfg.tune_tx_level);
+            SenseInputs s = readSenseInputs();
             {
                 StateLock lock;
                 g_state.swr        = r.swr;
                 g_state.returnLoss = r.returnLoss;
                 g_state.vfwd       = r.vfwd;
                 g_state.vrev       = r.vrev;
+                g_state.fPwr       = s.fPwr;
+                g_state.zHigh      = s.zHigh;
+                g_state.zLow       = s.zLow;
+                g_state.phase      = s.phase;
             }
         }
     }

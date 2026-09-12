@@ -12,7 +12,10 @@
 
 // I2C addresses
 #define ADDR_PCF8574_C_LO  0x38   // C relays bits 0-7
-#define ADDR_PCF8574_C_HI  0x39   // C bit 8 + tuner mode switches + K-Tune (P3)
+#define ADDR_PCF8574_C_HI  0x39   // C bit 8 + tuner mode switches + K-Tune (P3, outputs P0-P3)
+                                  // + sense inputs P4-P7: F-PWR/Z-HIGH/Z-LOW/PHASE (see PCF8574_C_HI_INPUT_MASK)
+#define PCF8574_C_HI_INPUT_MASK 0xF0   // P4-P7 must always be written '1' (released) so the quasi-
+                                       // bidirectional PCF8574 lets the external sense circuit drive them
 #define ADDR_PCF8574_L_HI  0x3A   // L bits 1-8 → P0-P7
 #define ADDR_PCF8574_L_LO  0x3B   // L0→P3, L9→P0, L10→P1; P2=Input (Ant A)
 #define ADDR_PCF8591       0x48   // ADC: AN0=Vfwd, AN1=Vrev

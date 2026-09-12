@@ -9,6 +9,16 @@ struct SWRResult {
     uint8_t vrev;
 };
 
+// Raw hardware sense inputs on 0x39.P4-P7. Polarity (which level = which
+// condition) is not yet calibrated — these are exposed as-read; see
+// /api/status and the Web-UI stats panel "Sense Inputs (raw)".
+struct SenseInputs {
+    bool fPwr;    // P4 — F-PWR: power applied to the tuner
+    bool zHigh;   // P5 — Z-HIGH: antenna impedance > 50 ohm
+    bool zLow;    // P6 — Z-LOW: antenna impedance < 50 ohm
+    bool phase;   // P7 — PHASE: sign of V/I phase difference
+};
+
 class I2CController {
 public:
     static bool init();
@@ -18,6 +28,9 @@ public:
 
     // SWR measurement (8 samples, outlier rejection) – called from taskI2C
     static SWRResult measureSWR(uint8_t minVfwd = 10);
+
+    // Read the F-PWR/Z-HIGH/Z-LOW/PHASE sense inputs – called from taskI2C
+    static SenseInputs readSenseInputs();
 
     // I2C task entry point
     static void taskI2C(void* param);

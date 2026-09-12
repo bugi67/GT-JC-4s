@@ -49,13 +49,17 @@ static void taskSerial(void*) {
                 else if (cmd == "status") {
                     uint16_t L, C, freq; uint8_t mode; bool kTune;
                     float swr, rl; uint8_t vfwd, vrev; int tuneState;
+                    bool fPwr, zHigh, zLow, phase;
                     { StateLock lock;
                       L=g_state.L; C=g_state.C; mode=g_state.mode; freq=g_state.freq_kHz;
                       swr=g_state.swr; rl=g_state.returnLoss;
                       vfwd=g_state.vfwd; vrev=g_state.vrev;
-                      kTune=g_state.kTune; tuneState=(int)g_state.tuneState; }
+                      kTune=g_state.kTune; tuneState=(int)g_state.tuneState;
+                      fPwr=g_state.fPwr; zHigh=g_state.zHigh; zLow=g_state.zLow; phase=g_state.phase; }
                     Serial.printf("L=%u C=%u mode=%u freq=%u SWR=%.2f RL=%.1fdB vfwd=%u vrev=%u kTune=%d tune=%d\r\n",
                         L, C, mode, freq, swr, rl, vfwd, vrev, (int)kTune, tuneState);
+                    Serial.printf("sense (raw): F-PWR=%d Z-HIGH=%d Z-LOW=%d PHASE=%d\r\n",
+                        (int)fPwr, (int)zHigh, (int)zLow, (int)phase);
                 }
             } else if (linePos < (int)sizeof(lineBuf) - 1) {
                 lineBuf[linePos++] = c;

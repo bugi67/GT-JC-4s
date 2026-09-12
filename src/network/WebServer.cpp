@@ -46,7 +46,7 @@ void WebUI::sendError(int code, const char* msg) {
 }
 
 String WebUI::buildStatusJSON() {
-    StaticJsonDocument<640> doc;
+    StaticJsonDocument<768> doc;
     StateLock lock;
     doc["L"]           = g_state.L;
     doc["C"]           = g_state.C;
@@ -59,6 +59,10 @@ String WebUI::buildStatusJSON() {
     doc["vfwd"]        = g_state.vfwd;
     doc["vrev"]        = g_state.vrev;
     doc["kTune"]       = g_state.kTune;
+    doc["fPwr"]        = g_state.fPwr;    // sense inputs, raw (polarity uncalibrated)
+    doc["zHigh"]       = g_state.zHigh;
+    doc["zLow"]        = g_state.zLow;
+    doc["phase"]       = g_state.phase;
     doc["tuneState"]   = (int)g_state.tuneState;
     doc["tuneProgress"]= g_state.tuneProgress;
     doc["otaState"]    = (int)g_state.otaState;
@@ -372,6 +376,7 @@ void WebUI::pushSSE() {
     if (!s_sseClient.connected()) { s_sseClient.stop(); s_sseClient = WiFiClient(); return; }
 
     float swr, rl; uint16_t L, C, freq; uint8_t tp, op, mode; int8_t rssi; bool kTune;
+    bool fPwr, zHigh, zLow, phase;
     TunerState::TuneState ts; TunerState::OtaState os;
     {
         StateLock lock;
@@ -381,6 +386,10 @@ void WebUI::pushSSE() {
         C     = g_state.C;
         mode  = g_state.mode;
         kTune = g_state.kTune;
+        fPwr  = g_state.fPwr;
+        zHigh = g_state.zHigh;
+        zLow  = g_state.zLow;
+        phase = g_state.phase;
         freq  = g_state.freq_kHz;
         rssi  = (int8_t)WiFi.RSSI();
         ts    = g_state.tuneState;
@@ -411,16 +420,18 @@ void WebUI::pushSSE() {
         s_sseLastKTune = kTune;
         s_sseLastRssi  = rssi;
         s_sseLastHb    = millis();
-        char buf[416];
+        char buf[448];
         snprintf(buf, sizeof(buf),
             "data:{\"swr\":%.2f,\"returnLoss\":%.1f,"
             "\"L\":%u,\"C\":%u,\"L_uH\":%.2f,\"C_pF\":%.0f,"
             "\"mode\":%u,\"kTune\":%d,\"freq_kHz\":%u,"
+            "\"fPwr\":%d,\"zHigh\":%d,\"zLow\":%d,\"phase\":%d,"
             "\"rssi\":%d,\"tuneState\":%d,\"tuneProgress\":%d,"
             "\"otaState\":%d,\"otaProgress\":%d}\n\n",
             swr, rl, L, C, calcLuH(L), calcCpF(C),
-            mode, kTune ? 1 : 0, freq, rssi,
-            (int)ts, tp, (int)os, op);
+            mode, kTune ? 1 : 0, freq,
+            fPwr ? 1 : 0, zHigh ? 1 : 0, zLow ? 1 : 0, phase ? 1 : 0,
+            rssi, (int)ts, tp, (int)os, op);
         s_sseClient.print(buf);
     }
 

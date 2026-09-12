@@ -642,6 +642,28 @@ tr:hover td { background: var(--hover); }
     <div class="prog-bar" id="sp-ota-bar"></div>
   </div>
 
+  <hr class="sp-hr">
+
+  <div class="sp-section-lbl">Sense Inputs (raw)</div>
+  <div class="sp-meta">
+    <div class="sp-meta-row">
+      <span class="sp-meta-lbl">F-PWR</span>
+      <span id="sp-fpwr">—</span>
+    </div>
+    <div class="sp-meta-row">
+      <span class="sp-meta-lbl">Z-HIGH</span>
+      <span id="sp-zhigh">—</span>
+    </div>
+    <div class="sp-meta-row">
+      <span class="sp-meta-lbl">Z-LOW</span>
+      <span id="sp-zlow">—</span>
+    </div>
+    <div class="sp-meta-row">
+      <span class="sp-meta-lbl">PHASE</span>
+      <span id="sp-phase">—</span>
+    </div>
+  </div>
+
   <div class="sp-meta">
     <div class="sp-meta-row">
       <span class="sp-meta-lbl" data-i18n="lbl_fw">Firmware</span>
@@ -810,6 +832,7 @@ $('btn-lang').addEventListener('click', () => {
 // ── State ─────────────────────────────────────────────────────────────────────
 const state = {
   L: 0, C: 0, L_uH: null, C_pF: null, mode: 1, kTune: false, freq_kHz: 0,
+  fPwr: null, zHigh: null, zLow: null, phase: null,
   swr: 0, returnLoss: 0,
   tuneState: 0, tuneProgress: 0,
   otaState: 0,  otaProgress: 0,
@@ -865,6 +888,11 @@ function syncStats() {
   $('sp-c').textContent    = state.C;
   $('sp-l-uh').textContent = state.L_uH != null ? state.L_uH.toFixed(2) + ' µH' : '—';
   $('sp-c-pf').textContent = state.C_pF != null ? Math.round(state.C_pF) + ' pF' : '—';
+  const senseTxt = v => v == null ? '—' : (v ? 'HIGH' : 'low');
+  $('sp-fpwr').textContent  = senseTxt(state.fPwr);
+  $('sp-zhigh').textContent = senseTxt(state.zHigh);
+  $('sp-zlow').textContent  = senseTxt(state.zLow);
+  $('sp-phase').textContent = senseTxt(state.phase);
   $('sp-fw').textContent   = state.fwVersion ? 'v' + state.fwVersion : '—';
   $('sp-rssi').textContent = state.rssi ? state.rssi + ' dBm' : '—';
   $('sp-ssid').textContent = state.wifiSsid || '—';

@@ -40,6 +40,13 @@ struct TunerState {
     // K-Tune relay
     bool     kTune     = false;    // 0x39.P3
 
+    // Hardware sense inputs (0x39.P4-P7). Raw bits — polarity not yet
+    // calibrated, see SenseInputs in I2CController.h.
+    bool     fPwr      = false;    // P4 — F-PWR
+    bool     zHigh     = false;    // P5 — Z-HIGH
+    bool     zLow      = false;    // P6 — Z-LOW
+    bool     phase     = false;    // P7 — PHASE
+
     // AutoTuner state
     enum class TuneState : uint8_t {
         IDLE, TUNING, DONE, ABORTED
