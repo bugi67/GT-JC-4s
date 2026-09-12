@@ -1,4 +1,4 @@
-# GT-JC-4s — Projektspezifikation v3.1
+# GT-JC-4s — Projektspezifikation v3.2
 **Antennenkoppler-Steuerung mit AutoTuner**
 Datum: 2026-09-12 | Autor: HB9CZF | Status: Implementiert / In Test
 
@@ -76,6 +76,10 @@ Web-GUI   ──HTTP──►  ESP32-C3            PCF8591 ADC   ◄──  SWR-
 | `JC-4s/feedback/C` | ► PUB | Bestätigung C |
 | `JC-4s/feedback/tunermode` | ► PUB | Bestätigung Modus |
 | `JC-4s/feedback/ktune` | ► PUB | Bestätigung K-Tune-Zustand (0/1) |
+| `JC-4s/feedback/fpwr` | ► PUB | Sense-Input F-PWR, roh/unkalibriert (0/1) |
+| `JC-4s/feedback/zhigh` | ► PUB | Sense-Input Z-HIGH, roh/unkalibriert (0/1) |
+| `JC-4s/feedback/zlow` | ► PUB | Sense-Input Z-LOW, roh/unkalibriert (0/1) |
+| `JC-4s/feedback/phase` | ► PUB | Sense-Input PHASE, roh/unkalibriert (0/1) |
 | `JC-4s/L_uH` | ► PUB | Berechneter L-Wert in µH |
 | `JC-4s/C_pF` | ► PUB | Berechneter C-Wert in pF |
 | `JC-4s/swr` | ► PUB | Aktuelles SWR |
@@ -631,7 +635,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v3.1 — Implementiert
+## 12. Status v3.2 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -701,3 +705,4 @@ GT-JC-4s/
 | 63 | Web-UI Reaktionszeit: sämtliche Shelly-HTTP-Aufrufe nach `taskMQTT` verlagert (`SHELLY_HTTP_TIMEOUT_MS`=1200, 60 s Backoff nach Fehler). `/api/shelly/status` liefert nur noch den Cache, `/api/shelly/toggle` ist optimistisch — der synchrone HTTP-Call im Handler fror den Webserver bei nicht erreichbarem Shelly 17 s pro Aufruf ein | ✅ |
 | 64 | Firmware-Version 1.4.0 als GitHub-Release `v1.4.0` publiziert (Items 60–63 enthalten) | ✅ |
 | 65 | Neue Hardware-Sense-Eingänge auf 0x39.P4-P7 (`SenseInputs`): F-PWR (Leistung am Koppler anliegend), Z-HIGH (Antennenimpedanz > 50 Ω), Z-LOW (< 50 Ω), PHASE (Vorzeichen U/I-Phasendifferenz, Polarität noch nicht kalibriert). `PCF8574_C_HI_INPUT_MASK`=0xF0 wird bei jedem Schreibzugriff auf 0x39 (`setLC()`, `SET_KTUNE`, Boot-Init) mit eingeblendet, damit die quasi-bidirektionalen Pins freigegeben bleiben — vorher wurden P4-P7 bei jedem Relais-Kommando aktiv auf LOW gezogen. Rohwerte (unkalibriert) in `/api/status`, SSE-Push, Serial `status`-Kommando und Web-UI Stats-Panel „Sense Inputs (raw)" — bewusst noch nicht in die AutoTuner-Logik eingebunden, bis die PHASE-Polarität feststeht | ✅ |
+| 66 | Sense-Inputs als MQTT-Feedback: `JC-4s/feedback/fpwr`, `/zhigh`, `/zlow`, `/phase` (roh, unkalibriert), publiziert von `publishStatus()`. Die bestehende Änderungserkennung in `taskMQTT` (bisher L/C/mode/kTune/freq) berücksichtigt jetzt auch die 4 Sense-Bits — während Fine-Tune/AutoTune ändert sich L oder C praktisch bei jedem Schritt, wodurch die Sense-Werte automatisch pro Schritt mitpubliziert werden (kein Zusatzcode in `AutoTuner.cpp` nötig) | ✅ |
