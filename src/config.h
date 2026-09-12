@@ -77,6 +77,10 @@ static const float C_PF[] = {
 #define MQTT_PUB_TUNE_PROGRESS MQTT_ROOT "/tune/progress"
 #define MQTT_SUB_KTUNE         MQTT_ROOT "/ktune"
 #define MQTT_PUB_FB_KTUNE      MQTT_ROOT "/feedback/ktune"
+#define MQTT_PUB_FB_FPWR       MQTT_ROOT "/feedback/fpwr"    // sense inputs, raw (polarity uncalibrated)
+#define MQTT_PUB_FB_ZHIGH      MQTT_ROOT "/feedback/zhigh"
+#define MQTT_PUB_FB_ZLOW       MQTT_ROOT "/feedback/zlow"
+#define MQTT_PUB_FB_PHASE      MQTT_ROOT "/feedback/phase"
 #define MQTT_PUB_LOG           MQTT_ROOT "/log"
 #define MQTT_PUB_IP            MQTT_ROOT "/ip"
 #define MQTT_PUB_MAC           MQTT_ROOT "/mac"

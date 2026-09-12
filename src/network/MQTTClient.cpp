@@ -221,10 +221,13 @@ void MQTTClient::publishStatus() {
 
     char buf[24];
     uint16_t L, C; uint8_t mode; float swr; bool kTune;
+    bool fPwr, zHigh, zLow, phase;
     {
         StateLock lock;
         L = g_state.L; C = g_state.C; mode = g_state.mode;
         swr = g_state.swr; kTune = g_state.kTune;
+        fPwr = g_state.fPwr; zHigh = g_state.zHigh;
+        zLow = g_state.zLow; phase = g_state.phase;
     }
 
     snprintf(buf, sizeof(buf), "%u", L);
@@ -241,6 +244,12 @@ void MQTTClient::publishStatus() {
     snprintf(buf, sizeof(buf), "%.2f", swr);
     s_mqtt.publish(MQTT_PUB_SWR, buf);
     s_mqtt.publish(MQTT_PUB_FB_KTUNE, kTune ? "1" : "0");
+    // Sense inputs, raw (polarity not yet calibrated) — published on every
+    // status burst, which fires on every L/C step during Fine-Tune/AutoTune.
+    s_mqtt.publish(MQTT_PUB_FB_FPWR,  fPwr  ? "1" : "0");
+    s_mqtt.publish(MQTT_PUB_FB_ZHIGH, zHigh ? "1" : "0");
+    s_mqtt.publish(MQTT_PUB_FB_ZLOW,  zLow  ? "1" : "0");
+    s_mqtt.publish(MQTT_PUB_FB_PHASE, phase ? "1" : "0");
 }
 
 void MQTTClient::publishTuneStatus(const char* status, uint8_t progress) {
@@ -263,6 +272,8 @@ void MQTTClient::taskMQTT(void* param) {
     static uint8_t  lastMode  = 0;
     static bool     lastKTune = false;
     static uint16_t lastFreq  = 0xFFFF;
+    static bool     lastFPwr  = false, lastZHigh = false, lastZLow = false, lastPhase = false;
+    static bool     senseSeen = false;
 
     for (;;) {
         // Always update g_state.rssi so the Web-GUI shows it even without MQTT
@@ -309,15 +320,25 @@ void MQTTClient::taskMQTT(void* param) {
                         if (ts == TunerState::TuneState::DONE) publishStatus();
                     }
 
-                    // Publish feedback whenever L/C/mode/kTune/freq changes
+                    // Publish feedback whenever L/C/mode/kTune/freq/sense-inputs change.
+                    // During Fine-Tune/AutoTune, L or C changes on almost every step, so
+                    // this also carries the sense inputs to MQTT once per step for free.
                     uint16_t curL, curC, curFreq; uint8_t curMode; bool curKTune;
+                    bool curFPwr, curZHigh, curZLow, curPhase;
                     {
                         StateLock lock;
                         curL = g_state.L; curC = g_state.C;
                         curMode = g_state.mode; curKTune = g_state.kTune;
                         curFreq = g_state.freq_kHz;
+                        curFPwr = g_state.fPwr; curZHigh = g_state.zHigh;
+                        curZLow = g_state.zLow; curPhase = g_state.phase;
                     }
-                    if (curL != lastL || curC != lastC || curMode != lastMode || curKTune != lastKTune || curFreq != lastFreq) {
+                    bool senseChanged = senseSeen && (curFPwr != lastFPwr || curZHigh != lastZHigh ||
+                                                       curZLow != lastZLow || curPhase != lastPhase);
+                    senseSeen = true;
+                    lastFPwr = curFPwr; lastZHigh = curZHigh; lastZLow = curZLow; lastPhase = curPhase;
+                    if (curL != lastL || curC != lastC || curMode != lastMode || curKTune != lastKTune ||
+                        curFreq != lastFreq || senseChanged) {
                         lastL = curL; lastC = curC; lastMode = curMode; lastKTune = curKTune; lastFreq = curFreq;
                         publishStatus();
                     }
