@@ -1,6 +1,6 @@
-# GT-JC-4s — Projektspezifikation v3.0
+# GT-JC-4s — Projektspezifikation v3.1
 **Antennenkoppler-Steuerung mit AutoTuner**
-Datum: 2026-09-10 | Autor: HB9CZF | Status: Implementiert / In Test
+Datum: 2026-09-12 | Autor: HB9CZF | Status: Implementiert / In Test
 
 ---
 
@@ -344,7 +344,7 @@ HTML/CSS/JS liegen als separate Dateien in LittleFS (`data/`). Kein externes CDN
 ### 5.3 REST-API (HTTP/1.1)
 | Methode | Pfad | Beschreibung |
 |---|---|---|
-| GET | `/api/status` | Status: L, C, **L_uH, C_pF**, mode, **kTune**, SWR, returnLoss, vfwd, vrev, freq, rssi, tuneState, otaState, … |
+| GET | `/api/status` | Status: L, C, **L_uH, C_pF**, mode, **kTune**, SWR, returnLoss, vfwd, vrev, **fPwr, zHigh, zLow, phase** (Sense-Inputs, roh), freq, rssi, tuneState, otaState, … |
 | POST | `/api/tune` | L, C, mode setzen |
 | POST | `/api/autotune` | AutoTune starten / stoppen |
 | POST | `/api/finetune` | Fine-Tune ab aktuellem L/C/Mode starten |
@@ -631,7 +631,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v3.0 — Implementiert
+## 12. Status v3.1 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -700,3 +700,4 @@ GT-JC-4s/
 | 62 | Web-UI Reaktionszeit: SSE auf eigenem Listener `SSE_PORT`=81 — der dauerhaft offene EventSource-Socket blockierte den Single-Client-`WebServer` auf :80 sonst je ~5 s (`HTTP_MAX_DATA_WAIT`) pro Runde; `EventSource` in `index.html` zeigt jetzt auf `:81` | ✅ |
 | 63 | Web-UI Reaktionszeit: sämtliche Shelly-HTTP-Aufrufe nach `taskMQTT` verlagert (`SHELLY_HTTP_TIMEOUT_MS`=1200, 60 s Backoff nach Fehler). `/api/shelly/status` liefert nur noch den Cache, `/api/shelly/toggle` ist optimistisch — der synchrone HTTP-Call im Handler fror den Webserver bei nicht erreichbarem Shelly 17 s pro Aufruf ein | ✅ |
 | 64 | Firmware-Version 1.4.0 als GitHub-Release `v1.4.0` publiziert (Items 60–63 enthalten) | ✅ |
+| 65 | Neue Hardware-Sense-Eingänge auf 0x39.P4-P7 (`SenseInputs`): F-PWR (Leistung am Koppler anliegend), Z-HIGH (Antennenimpedanz > 50 Ω), Z-LOW (< 50 Ω), PHASE (Vorzeichen U/I-Phasendifferenz, Polarität noch nicht kalibriert). `PCF8574_C_HI_INPUT_MASK`=0xF0 wird bei jedem Schreibzugriff auf 0x39 (`setLC()`, `SET_KTUNE`, Boot-Init) mit eingeblendet, damit die quasi-bidirektionalen Pins freigegeben bleiben — vorher wurden P4-P7 bei jedem Relais-Kommando aktiv auf LOW gezogen. Rohwerte (unkalibriert) in `/api/status`, SSE-Push, Serial `status`-Kommando und Web-UI Stats-Panel „Sense Inputs (raw)" — bewusst noch nicht in die AutoTuner-Logik eingebunden, bis die PHASE-Polarität feststeht | ✅ |
