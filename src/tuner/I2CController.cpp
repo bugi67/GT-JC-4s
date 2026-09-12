@@ -137,7 +137,16 @@ SWRResult I2CController::measureSWR(uint8_t minVfwd) {
     float vfwdAvg = (float)sumFwd / TUNE_MEASUREMENTS;
     float vrevAvg = (float)sumRev / TUNE_MEASUREMENTS;
 
-    SWRResult res = {0.0f, 0.0f, (uint8_t)(vfwdAvg + 0.5f), (uint8_t)(vrevAvg + 0.5f)};
+    // The forward-power detector's output is FOR/2 relative to the reverse
+    // detector (hardware characteristic of this bridge) — double it here so
+    // rho = Vrev/Vfwd is computed on the same scale for both arms. Without
+    // this, rho (and hence SWR) reads ~2x high and RL ~6 dB low versus the
+    // true match quality.
+    vfwdAvg *= 2.0f;
+
+    float vfwdClamped = vfwdAvg + 0.5f;
+    if (vfwdClamped > 255.0f) vfwdClamped = 255.0f;
+    SWRResult res = {0.0f, 0.0f, (uint8_t)vfwdClamped, (uint8_t)(vrevAvg + 0.5f)};
     if (vfwdAvg < (float)minVfwd) return res;   // no TX signal → swr=0 so UI shows "—"
 
     float rho = (vfwdAvg > 0.0f) ? vrevAvg / vfwdAvg : 1.0f;
