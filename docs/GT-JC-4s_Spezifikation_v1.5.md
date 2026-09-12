@@ -1,4 +1,4 @@
-# GT-JC-4s — Projektspezifikation v3.4
+# GT-JC-4s — Projektspezifikation v3.5
 **Antennenkoppler-Steuerung mit AutoTuner**
 Datum: 2026-09-12 | Autor: HB9CZF | Status: Implementiert / In Test
 
@@ -635,7 +635,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v3.4 — Implementiert
+## 12. Status v3.5 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -708,3 +708,4 @@ GT-JC-4s/
 | 66 | Sense-Inputs als MQTT-Feedback: `JC-4s/feedback/fpwr`, `/zhigh`, `/zlow`, `/phase` (roh, unkalibriert), publiziert von `publishStatus()`. Die bestehende Änderungserkennung in `taskMQTT` (bisher L/C/mode/kTune/freq) berücksichtigt jetzt auch die 4 Sense-Bits — während Fine-Tune/AutoTune ändert sich L oder C praktisch bei jedem Schritt, wodurch die Sense-Werte automatisch pro Schritt mitpubliziert werden (kein Zusatzcode in `AutoTuner.cpp` nötig) | ✅ |
 | 67 | Fix `runTune()` Phase 2.5 (Medium-Scan-Kandidatenvergleich): die Top-3-Coarse-Kandidaten + Inter-L-Kandidat wurden mit je einer einzelnen, ungemittelten Messung (5 ms Settle, 1 Messwert) verglichen — dieselbe Rauschanfälligkeit, die für die Fine-Tune-Bestätigung bereits behoben wurde (Item 61), war hier noch vorhanden. Reproduzierbar auf Hardware nachgewiesen (25 Ω resistive Last, 3530 kHz): `mediumScan()` fand einen echten guten C@TRX-Kandidaten (L=8 C=120 mode=1, RL 20,4 dB), die Einzelmessung bewertete ihn aber schlechter als einen mittelmäßigen C@ANT-Kandidaten → AutoTune endete zweimal reproduzierbar bei C@ANT/SWR 2,66 statt beim bekannten C@TRX-Match/SWR 1,00. Beide Vergleichsstellen nutzen jetzt `measureAvg()` (6-fache Mittelung, wie bei Fine-Tune) — nach dem Fix fand AutoTune auf Anhieb L=4 C=129 mode=1, SWR=1,00 | ✅ |
 | 68 | Hardware-Kalibrierung `measureSWR()`: der Vorwärtsleistungs-Detektor (FOR) liefert nur FOR/2 relativ zum Rückwärts-Detektor — `vfwd` wird nach der Mittelung ×2 skaliert, bevor `rho = Vrev/Vfwd` gebildet wird (mit Clamp auf 255 für den angezeigten Rohwert). Ohne Korrektur las Rho ~2× zu hoch und Return Loss ~6 dB zu niedrig gegenüber dem echten Match — `DEFAULT_TUNE_THRESHOLD`=18 dB entspricht damit jetzt tatsächlich der im Kommentar dokumentierten SWR≈1,29, keine Anpassung der Schwelle nötig | ✅ |
+| 69 | Kalibrierungs-Messreihe Sense-Inputs (5 W RF, 3530 kHz, 5 Lasten: 25 Ω, 100 Ω, 250 Ω, 50 Ω [~30 cm Zuleitung], 10 Ω): **F-PWR** bestätigt aktiv-High, keine Invertierung nötig (`1`=Leistung anliegend). **Z-HIGH/Z-LOW**: `zh=1,zl=0` markiert reproduzierbar (4/4 erfolgreiche Läufe) die Nähe zum echten Impedanz-Match, unabhängig von Fehlanpassungsrichtung/-betrag; bei der 10-Ω-Last (kein Match gefunden, vermutlich außerhalb des Anpassbereichs bei dieser Frequenz) trat das Muster korrekt nicht auf. `zh=0,zl=1` kam in keinem der 6 Mitschnitte (~5400 Samples) vor — Z-LOW ist strukturell eine Teilmenge von Z-HIGH, vermutlich ein zweites (höheres) Abweichungs-Schwellwert-Paar statt Richtungsanzeige „>50 Ω"/„<50 Ω"; ohne Schaltplan des Sense-Boards nicht abschliessend klärbar. **PHASE** kippt beim Sweep durch die Resonanz wie bei einem echten Vorzeichen-Detektor erwartet, ist aber genau am Nulldurchgang instabil (physikalisch plausibel); welcher Pegel kapazitiv vs. induktiv bedeutet, ist weiterhin offen. Alle 4 Sense-Inputs bleiben auf Anwenderwunsch vorerst reine Anzeige, nicht in die AutoTuner-Logik eingebunden. Messmethode: Python/paho-mqtt Hintergrund-Logger auf `JC-4s/#` statt Node-RED-Debug-Sidebar (deren Retention bei einem vollen Coarse-Scan zu früh überläuft) | ℹ️ Beobachtung |
