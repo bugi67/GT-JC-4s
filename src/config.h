@@ -6,9 +6,15 @@
 #endif
 
 // ── Hardware ─────────────────────────────────────────────────────────────────
-#define I2C_SDA_PIN        6
-#define I2C_SCL_PIN        7
+// XIAO ESP32-S3 default I2C pins (Wire's SDA/SCL constants in pins_arduino.h)
+#define I2C_SDA_PIN        5
+#define I2C_SCL_PIN        6
 #define I2C_FREQ_HZ        100000
+
+// Onboard user LED (XIAO ESP32-S3, GPIO21 via LED_BUILTIN), active-low like
+// the rest of the Seeed XIAO family (LOW = on). Lit while WiFi is connected —
+// same convention as the other GT projects (e.g. GT-Rotor).
+#define STATUS_LED_PIN     LED_BUILTIN
 
 // I2C addresses
 #define ADDR_PCF8574_C_LO  0x38   // C relays bits 0-7

@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <WiFi.h>
 #include <nvs_flash.h>
 #include <LittleFS.h>
 #include <time.h>
@@ -95,6 +96,10 @@ void setup() {
 
     LOG_INFO("System", "GT-JC-4s firmware v%s starting", FIRMWARE_VERSION);
 
+    // 4b. Status LED — off (active-low) until WiFi connects, see loop()
+    pinMode(STATUS_LED_PIN, OUTPUT);
+    digitalWrite(STATUS_LED_PIN, HIGH);
+
     // 5. FreeRTOS primitives
     g_stateMutex        = xSemaphoreCreateMutex();
     g_tuneStartSem      = xSemaphoreCreateBinary();
@@ -125,17 +130,20 @@ void setup() {
     // 10. Web server
     WebUI::begin();
 
-    // 11. Start FreeRTOS tasks
-    xTaskCreate(WebUI::taskWebServer,       "taskWeb",    TASK_WEB_STACK,   nullptr, TASK_WEB_PRIO,    nullptr);
-    xTaskCreate(MQTTClient::taskMQTT,       "taskMQTT",   TASK_MQTT_STACK,  nullptr, TASK_MQTT_PRIO,   nullptr);
-    xTaskCreate(AutoTuner::taskAutoTuner,   "taskTuner",  TASK_TUNER_STACK, nullptr, TASK_TUNER_PRIO,  nullptr);
-    xTaskCreate(I2CController::taskI2C,     "taskI2C",    TASK_I2C_STACK,   nullptr, TASK_I2C_PRIO,    nullptr);
-    xTaskCreate(taskSerial,                 "taskSerial", TASK_SERIAL_STACK,nullptr, TASK_SERIAL_PRIO, nullptr);
+    // 11. Start FreeRTOS tasks — all pinned to Core 1, leaving Core 0 to the
+    // SDK's own WiFi/BT driver tasks (ESP32-S3 is dual-core; the previous
+    // ESP32-C3 target was single-core so this distinction didn't exist there).
+    xTaskCreatePinnedToCore(WebUI::taskWebServer,       "taskWeb",    TASK_WEB_STACK,   nullptr, TASK_WEB_PRIO,    nullptr, 1);
+    xTaskCreatePinnedToCore(MQTTClient::taskMQTT,       "taskMQTT",   TASK_MQTT_STACK,  nullptr, TASK_MQTT_PRIO,   nullptr, 1);
+    xTaskCreatePinnedToCore(AutoTuner::taskAutoTuner,   "taskTuner",  TASK_TUNER_STACK, nullptr, TASK_TUNER_PRIO,  nullptr, 1);
+    xTaskCreatePinnedToCore(I2CController::taskI2C,     "taskI2C",    TASK_I2C_STACK,   nullptr, TASK_I2C_PRIO,    nullptr, 1);
+    xTaskCreatePinnedToCore(taskSerial,                 "taskSerial", TASK_SERIAL_STACK,nullptr, TASK_SERIAL_PRIO, nullptr, 1);
 
     LOG_INFO("System", "All tasks started");
 }
 
 void loop() {
-    // All work is done in FreeRTOS tasks; loop() can yield
+    // All work is done in FreeRTOS tasks; loop() just drives the status LED.
+    digitalWrite(STATUS_LED_PIN, WiFi.status() == WL_CONNECTED ? LOW : HIGH);   // active-low
     vTaskDelay(pdMS_TO_TICKS(1000));
 }
