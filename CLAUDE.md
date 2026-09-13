@@ -4,19 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-GT-JC-4s is ESP32-C3 (Seeed XIAO) firmware for an automatic HF antenna tuner. It controls L/C relay networks via I2C, measures SWR via an AD8591 ADC, and exposes a Web-UI, REST API, MQTT, and OTA update functionality. Built with PlatformIO + Arduino framework.
+GT-JC-4s is ESP32-S3 (Seeed XIAO) firmware for an automatic HF antenna tuner. It controls L/C relay networks via I2C, measures SWR via an AD8591 ADC, and exposes a Web-UI, REST API, MQTT, and OTA update functionality. Built with PlatformIO + Arduino framework.
 
 ## Commands
 
 ```bash
-# Build and flash firmware (COM6)
+# Build and flash firmware (COM18)
 pio run --target upload
 
 # Build and flash web assets (LittleFS)
 pio run --target buildfs
 pio run --target uploadfs
 
-# Serial monitor (115200 baud, COM6)
+# Serial monitor (115200 baud, COM18)
 pio run --target monitor
 
 # Build only (no upload)

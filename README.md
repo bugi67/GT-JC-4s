@@ -6,7 +6,7 @@ ESP32-basierte Firmware für einen automatischen HF-Antennentuner (L/C-Netzwerk)
 
 | Komponente | Details |
 |---|---|
-| Mikrocontroller | Seeed XIAO ESP32-C3 |
+| Mikrocontroller | Seeed XIAO ESP32-S3 |
 | I/O-Erweiterung | PCF8574 (I2C) — Relais-Steuerung |
 | ADC | AD8591 (I2C) — SWR-Messung |
 | Netzwerk | WiFi 802.11 b/g/n |
@@ -33,7 +33,7 @@ ESP32-basierte Firmware für einen automatischen HF-Antennentuner (L/C-Netzwerk)
 ## Voraussetzungen
 
 - [PlatformIO](https://platformio.org/) (VSCode-Extension oder CLI)
-- USB-Verbindung zum XIAO ESP32-C3
+- USB-Verbindung zum XIAO ESP32-S3
 
 ## Build & Flash
 
