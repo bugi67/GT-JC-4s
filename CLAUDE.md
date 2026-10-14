@@ -9,14 +9,14 @@ GT-JC-4s is ESP32-S3 (Seeed XIAO) firmware for an automatic HF antenna tuner. It
 ## Commands
 
 ```bash
-# Build and flash firmware (COM18)
+# Build and flash firmware (COM7)
 pio run --target upload
 
 # Build and flash web assets (LittleFS)
 pio run --target buildfs
 pio run --target uploadfs
 
-# Serial monitor (115200 baud, COM18)
+# Serial monitor (115200 baud, COM7)
 pio run --target monitor
 
 # Build only (no upload)

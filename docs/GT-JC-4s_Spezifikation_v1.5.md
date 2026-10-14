@@ -1,6 +1,6 @@
-# GT-JC-4s — Projektspezifikation v3.7
+# GT-JC-4s — Projektspezifikation v3.8
 **Antennenkoppler-Steuerung mit AutoTuner**
-Datum: 2026-09-13 | Autor: HB9CZF | Status: Implementiert / In Test
+Datum: 2026-10-14 | Autor: HB9CZF | Status: Implementiert / In Test
 
 ---
 
@@ -558,7 +558,7 @@ board     = seeed_xiao_esp32s3
 framework = arduino
 
 monitor_speed = 115200
-upload_port   = COM18
+upload_port   = COM7
 
 lib_deps =
     adafruit/Adafruit PCF8574 @ ^1.0.0
@@ -636,7 +636,7 @@ GT-JC-4s/
 
 ---
 
-## 12. Status v3.7 — Implementiert
+## 12. Status v3.8 — Implementiert
 
 | # | Feature | Status |
 |---|---|---|
@@ -713,3 +713,4 @@ GT-JC-4s/
 | 70 | Hardware-Plattformwechsel: Seeed Studio XIAO **ESP32-C3 → ESP32-S3** (COM18, per USB-Seriell geflasht — neues Board, noch ohne angeschlossene Tuner-Hardware/EEPROM/PCF8574/PCF8591, bootet sauber in den Captive-Portal-Modus). `platformio.ini`-Env umbenannt (`seeed_xiao_esp32s3`), `I2C_SDA_PIN`/`I2C_SCL_PIN` auf die S3-Default-Pins (5/6) angepasst, `custom_partitions.csv` unverändert übernommen (passt weiterhin in die ersten ~4 MB des jetzt 8-MB-Flashs). Das inzwischen wirkungslose `CONFIG_FREERTOS_UNICORE=1` (nie im eigenen Code referenziert) wurde entfernt | ✅ |
 | 71 | Dual-Core-Nutzung auf dem neuen ESP32-S3: alle 5 eigenen Tasks (`taskWeb`, `taskMQTT`, `taskI2C`, `taskTuner`, `taskSerial`) laufen jetzt per `xTaskCreatePinnedToCore()` auf Core 1, Core 0 bleibt dem WiFi/BT-Treiber des SDK vorbehalten (analog zum Pattern in anderen GT-Projekten). Status-LED (`LED_BUILTIN`, aktiv-low) zeigt den WLAN-Status: aus solange nicht verbunden, an (LOW) sobald `WiFi.status()==WL_CONNECTED`, geprüft 1×/s in `loop()` | ✅ |
 | 72 | Inbetriebnahme ESP32-S3 mit angeschlossener Tuner-Hardware abgeschlossen: WLAN-Verbindung über Captive Portal hergestellt (192.168.0.198), MQTT/NTP verbunden. Fine-Tune-Testlauf bestätigt die komplette Kette (I2C-Timing, Relais, ADC-Brücke inkl. FOR/2-Korrektur, Kandidaten-Bestätigung, Dual-Core-Scheduling) funktioniert unverändert: `L=2 C=123 mode=1 SWR=1,00 RL=80 dB`, mehrere Nachbarpunkte ebenfalls bei RL 80 dB bestätigt (breites, stabiles Minimum). `WiFi.setSleep(false)` unverändert aktiv (Code-Review); beobachtete Ping-Jitter (3–98 ms) bei RSSI −80/−81 dBm ist wie beim alten C3-Gerät auf schwaches Signal zurückzuführen, nicht auf Modem-Sleep | ✅ |
+| 73 | Erstes ESP32-S3-Board (COM18) als defekt diagnostiziert (u. a. Captive-Portal-AP war von einem iPhone nicht erreichbar) und durch ein zweites Board ersetzt — neue USB-Seriell-Adresse **COM7** (`platformio.ini`, `CLAUDE.md`, Abschnitt 9.1 aktualisiert). Firmware + Filesystem per USB-Seriell neu geflasht, bootet sauber, Tuner-Hardware am neuen Board angeschlossen und funktionsfähig bestätigt | ✅ |
