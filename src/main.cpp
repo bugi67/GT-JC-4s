@@ -49,7 +49,7 @@ static void taskSerial(void*) {
                 else if (cmd == "reboot")    { ESP.restart(); }
                 else if (cmd == "status") {
                     uint16_t L, C, freq; uint8_t mode; bool kTune;
-                    float swr, rl; uint8_t vfwd, vrev; int tuneState;
+                    float swr, rl; uint16_t vfwd, vrev; int tuneState;
                     bool fPwr, zHigh, zLow, phase;
                     { StateLock lock;
                       L=g_state.L; C=g_state.C; mode=g_state.mode; freq=g_state.freq_kHz;

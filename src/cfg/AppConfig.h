@@ -8,7 +8,7 @@ struct AppConfig {
     uint16_t mqtt_port;
     bool     mqtt_enabled;
     float    tune_threshold;
-    uint8_t  tune_tx_level;
+    uint16_t tune_tx_level;   // ADS1115 counts (was uint8_t for the old 8-bit PCF8591)
     uint16_t coarse_step_l;
     uint16_t coarse_step_c;
     char     ota_manifest_url[256];

@@ -44,7 +44,7 @@ bool Config::load() {
     g_cfg.mqtt_port      = doc["mqtt_port"]      | DEFAULT_MQTT_PORT;
     g_cfg.mqtt_enabled   = doc["mqtt_enabled"]   | true;
     g_cfg.tune_threshold = doc["tune_threshold"] | DEFAULT_TUNE_THRESHOLD;
-    g_cfg.tune_tx_level  = doc["tune_tx_level"]  | (uint8_t)DEFAULT_TX_LEVEL;
+    g_cfg.tune_tx_level  = doc["tune_tx_level"]  | (uint16_t)DEFAULT_TX_LEVEL;
     g_cfg.coarse_step_l  = doc["coarse_step_l"]  | (uint16_t)DEFAULT_COARSE_L;
     g_cfg.coarse_step_c  = doc["coarse_step_c"]  | (uint16_t)DEFAULT_COARSE_C;
     strlcpy(g_cfg.ota_manifest_url, doc["ota_manifest_url"] | OTA_MANIFEST_URL_DEFAULT,

@@ -1,12 +1,13 @@
 #pragma once
 #include <Arduino.h>
+#include "../config.h"
 #include "../state.h"
 
 struct SWRResult {
     float swr;
     float returnLoss;   // dB
-    uint8_t vfwd;
-    uint8_t vrev;
+    uint16_t vfwd;       // ADS1115 counts (was uint8_t for the old 8-bit PCF8591)
+    uint16_t vrev;
 };
 
 // Raw hardware sense inputs on 0x39.P4-P7. Polarity (which level = which
@@ -27,7 +28,7 @@ public:
     static void setLC(uint16_t L, uint16_t C, uint8_t mode);
 
     // SWR measurement (8 samples, outlier rejection) – called from taskI2C
-    static SWRResult measureSWR(uint8_t minVfwd = 10);
+    static SWRResult measureSWR(uint16_t minVfwd = DEFAULT_TX_LEVEL);
 
     // Read the F-PWR/Z-HIGH/Z-LOW/PHASE sense inputs – called from taskI2C
     static SenseInputs readSenseInputs();
@@ -36,8 +37,7 @@ public:
     static void taskI2C(void* param);
 
 private:
-    static uint8_t  readADC(uint8_t channel);
-    static void     writePCF8574(uint8_t addr, uint8_t val);
+    static void writePCF8574(uint8_t addr, uint8_t val);
 };
 
 // Helper: calculate L value in µH from relay code

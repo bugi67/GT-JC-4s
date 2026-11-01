@@ -11,6 +11,14 @@
 #define I2C_SCL_PIN        6
 #define I2C_FREQ_HZ        100000
 
+// Dedicated second I2C bus (Wire1) for the ADS1115, routed through its own
+// PCA9517 rather than sharing the PCF8574 bus — isolates it after the shared
+// bus was found to corrupt its register reads. XIAO ESP32-S3 silkscreen
+// D0/D1 = GPIO1/GPIO2.
+#define I2C2_SDA_PIN       1   // D0
+#define I2C2_SCL_PIN       2   // D1
+#define I2C2_FREQ_HZ       100000
+
 // Onboard user LED (XIAO ESP32-S3, GPIO21 via LED_BUILTIN), active-low like
 // the rest of the Seeed XIAO family (LOW = on). Lit while WiFi is connected —
 // same convention as the other GT projects (e.g. GT-Rotor).
@@ -24,13 +32,17 @@
                                        // bidirectional PCF8574 lets the external sense circuit drive them
 #define ADDR_PCF8574_L_HI  0x3A   // L bits 1-8 → P0-P7
 #define ADDR_PCF8574_L_LO  0x3B   // L0→P3, L9→P0, L10→P1; P2=Input (Ant A)
-#define ADDR_PCF8591       0x48   // ADC: AN0=Vfwd, AN1=Vrev
+// ADS1115 16-bit ADC (replaces the old PCF8591, same I2C address), driven via
+// the Adafruit_ADS1X15 library (see I2CController.cpp). A0 = Vfwd, A1 = Vrev,
+// each through a TLC2272 op-amp stage followed by a 4:1 divider into the
+// ADS1115 pin — both channels go through a matching signal chain, so no
+// forward/reverse asymmetry correction is needed (unlike the old bridge).
+// Gain is set to GAIN_ONE (±4.096V, ~125 µV/count) — revisit if the op-amp+
+// divider output at full RF drive turns out to sit well under ~2V (GAIN_TWO,
+// ~2x the resolution) or over ~4V (GAIN_TWOTHIRDS, ±6.144V).
+#define ADDR_ADS1115       0x48
 #define ADDR_EEPROM_PRESET 0x50   // Band presets (256 bytes)
 #define ADDR_EEPROM_CFG    0x51   // Configuration (256 bytes)
-
-// ADC channel (AN0/AN1 hardware-vertauscht: AN1=Vfwd, AN0=Vrev)
-#define ADC_CH_VFWD        1
-#define ADC_CH_VREV        0
 
 // ── Tuner limits ─────────────────────────────────────────────────────────────
 #define L_MAX              2047
@@ -54,7 +66,11 @@ static const float C_PF[] = {
 
 // ── AutoTuner defaults ────────────────────────────────────────────────────────
 #define DEFAULT_TUNE_THRESHOLD  18.0f   // dB Return Loss (~SWR 1.29)
-#define DEFAULT_TX_LEVEL        10      // min Vfwd for TX detect
+// min Vfwd (ADS1115 counts, ~125 µV/count at ±4.096V PGA) to consider a carrier
+// present. Placeholder scaled from the old 8-bit default (10/255 ≈ 4% of full
+// scale) — needs recalibrating against real RF once the new front-end's
+// actual output levels are known.
+#define DEFAULT_TX_LEVEL        1300
 #define DEFAULT_COARSE_L        64
 #define DEFAULT_COARSE_C        16
 #define FINE_WINDOW_SIZE        9       // ±4 steps around optimum

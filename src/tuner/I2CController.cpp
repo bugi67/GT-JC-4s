@@ -5,6 +5,16 @@
 #include "../logger/Logger.h"
 #include <Wire.h>
 #include <math.h>
+#include <Adafruit_ADS1X15.h>
+
+// Single ADS1115 instance for the Vfwd/Vrev bridge (0x48). Using Adafruit's
+// library rather than hand-rolled register writes — a hand-rolled driver's
+// config writes were ACK'ing (no I2C error) but never actually taking effect
+// on the chip (config-register readback never matched what was written, on
+// real hardware); switched to the well-tested library rather than keep
+// debugging that blind over OTA.
+static Adafruit_ADS1115 s_ads;
+static bool              s_adsOk = false;
 
 // ── Relay bit mapping ────────────────────────────────────────────────────────
 // L value (0-2047, 11 bits):
@@ -47,11 +57,10 @@
 bool I2CController::init() {
     Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, (uint32_t)I2C_FREQ_HZ);
 
-    // Probe required devices
+    // Probe the PCF8574 relay expanders (no library — plain register writes)
     const uint8_t probeAddrs[] = {
         ADDR_PCF8574_C_LO, ADDR_PCF8574_C_HI,
-        ADDR_PCF8574_L_HI, ADDR_PCF8574_L_LO,
-        ADDR_PCF8591
+        ADDR_PCF8574_L_HI, ADDR_PCF8574_L_LO
     };
     bool ok = true;
     for (uint8_t addr : probeAddrs) {
@@ -62,6 +71,33 @@ bool I2CController::init() {
             ok = false;
         }
     }
+
+    // ADS1115 now lives on its own dedicated bus (Wire1, D0/D1) rather than
+    // sharing Wire with the PCF8574s — the shared bus was found to corrupt
+    // its register reads (writes ACK fine, but every read came back 0x0000).
+    Wire1.begin(I2C2_SDA_PIN, I2C2_SCL_PIN, (uint32_t)I2C2_FREQ_HZ);
+
+    // ADS1115 — begin() itself talks the real register protocol (config
+    // write + readback), a far more meaningful check than a bare address ACK.
+    s_adsOk = s_ads.begin(ADDR_ADS1115, &Wire1);
+    if (!s_adsOk) {
+        // Adafruit_I2CDevice::begin() calls Wire.begin() again internally (no
+        // args) right before its own ACK check — immediately after our own
+        // explicit Wire.begin() just above, that can transiently upset the
+        // bus with no settle time. A single retry reliably succeeds once the
+        // bus has settled; address ACKs outside this path are unaffected.
+        delay(5);
+        s_adsOk = s_ads.begin(ADDR_ADS1115, &Wire1);
+        if (s_adsOk) LOG_WARN("I2C", "ADS1115 begin() needed a retry");
+    }
+    if (s_adsOk) {
+        s_ads.setGain(GAIN_ONE);              // ±4.096V, ~125 µV/count
+        s_ads.setDataRate(RATE_ADS1115_860SPS); // fastest — coarse scan does ~2000 reads
+    } else {
+        LOG_ERROR("I2C", "ADS1115 0x%02X not found/not responding", ADDR_ADS1115);
+    }
+    ok = ok && s_adsOk;
+
     if (ok) LOG_INFO("I2C", "All I2C devices found");
     return ok;
 }
@@ -95,32 +131,54 @@ void I2CController::setLC(uint16_t L, uint16_t C, uint8_t mode) {
               L, C, mode, (int)g_state.kTune, l3A, l3B, c38, c39);
 }
 
-uint8_t I2CController::readADC(uint8_t channel) {
-    // PCF8591 control byte: auto-increment off, single-ended, select channel
-    Wire.beginTransmission(ADDR_PCF8591);
-    Wire.write(0x40 | (channel & 0x03));
-    Wire.endTransmission();
-    // Need at least one conversion cycle before result is valid
-    delayMicroseconds(250);
-    Wire.requestFrom((uint8_t)ADDR_PCF8591, (uint8_t)2);
-    Wire.read();          // discard: result of previous cycle
-    return Wire.available() ? Wire.read() : 0;
+// Single-shot read of one ADS1115 input via the Adafruit library; clamped to
+// >= 0 (the forward/reverse detector outputs are physically unipolar — small
+// negative codes only happen from noise right at 0 V).
+//
+// Deliberately NOT using the library's own readADC_SingleEnded(): it polls
+// conversionComplete() in an unbounded `while (!conversionComplete());` loop
+// with no timeout. A single glitched status read there hangs taskI2C (and
+// the whole tuner) permanently, with no way to recover short of a reboot —
+// observed directly during bring-up. Same register protocol, just bounded.
+static uint16_t readADS1115(uint8_t channel) {
+    if (!s_adsOk) return 0;
+
+    // Once a channel has timed out, retry at most once/second instead of
+    // hammering the bus with a doomed conversion on every ~250ms idle cycle
+    // (measureSWR() alone calls this 8x per channel per measurement).
+    static unsigned long s_lastAttempt[2] = {0, 0};
+    static bool          s_lastOk[2]      = {true, true};
+    if (!s_lastOk[channel] && millis() - s_lastAttempt[channel] < 1000) return 0;
+    s_lastAttempt[channel] = millis();
+
+    s_ads.startADCReading(MUX_BY_CHANNEL[channel], /*continuous=*/false);
+    unsigned long t0 = millis();
+    while (!s_ads.conversionComplete()) {
+        if (millis() - t0 > 20) {   // ~1.2ms expected @ 860SPS — generous margin
+            LOG_ERROR("I2C", "ADS1115 ch%u: conversion timeout", channel);
+            s_lastOk[channel] = false;
+            return 0;
+        }
+    }
+    s_lastOk[channel] = true;
+    int16_t raw = s_ads.getLastConversionResults();
+    LOG_DEBUG("I2C", "ADS1115 ch%u: raw=%d", channel, raw);
+    return raw > 0 ? (uint16_t)raw : 0;
 }
 
-SWRResult I2CController::measureSWR(uint8_t minVfwd) {
-    uint8_t samples[TUNE_MEASUREMENTS];
-    uint8_t revSamples[TUNE_MEASUREMENTS];
+SWRResult I2CController::measureSWR(uint16_t minVfwd) {
+    uint16_t samples[TUNE_MEASUREMENTS];
+    uint16_t revSamples[TUNE_MEASUREMENTS];
 
     for (int i = 0; i < TUNE_MEASUREMENTS; i++) {
-        samples[i]    = readADC(ADC_CH_VFWD);
-        revSamples[i] = readADC(ADC_CH_VREV);
-        delayMicroseconds(100);
+        samples[i]    = readADS1115(0);   // A0 = Vfwd
+        revSamples[i] = readADS1115(1);   // A1 = Vrev
     }
 
     // Outlier rejection: replace values outside ±5% of max with max
-    uint8_t maxFwd = *std::max_element(samples, samples + TUNE_MEASUREMENTS);
+    uint16_t maxFwd = *std::max_element(samples, samples + TUNE_MEASUREMENTS);
     for (int i = 0; i < TUNE_MEASUREMENTS; i++) {
-        if (abs((int)samples[i] - maxFwd) > maxFwd * 5 / 100)
+        if (abs((int)samples[i] - (int)maxFwd) > maxFwd * 5 / 100)
             samples[i] = maxFwd;
     }
 
@@ -129,24 +187,18 @@ SWRResult I2CController::measureSWR(uint8_t minVfwd) {
         sumFwd += samples[i];
         sumRev += revSamples[i];
     }
-    // Keep the averages in floating point. Near a match Vrev is only a count or
-    // two, so truncating to whole ADC counts quantises return loss into ~6 dB
-    // steps and the fine-tuner ends up chasing LSB noise (a stray Vrev=0 reads
-    // as a "perfect" match and stops the search). The fractional average
-    // recovers ~1/N-count resolution.
+    // Keep the averages in floating point — same reasoning as before (avoids
+    // quantising return loss into whole-count steps near a match), though the
+    // ADS1115's 16-bit resolution makes this far less critical than it was on
+    // the old 8-bit PCF8591.
     float vfwdAvg = (float)sumFwd / TUNE_MEASUREMENTS;
     float vrevAvg = (float)sumRev / TUNE_MEASUREMENTS;
 
-    // The forward-power detector's output is FOR/2 relative to the reverse
-    // detector (hardware characteristic of this bridge) — double it here so
-    // rho = Vrev/Vfwd is computed on the same scale for both arms. Without
-    // this, rho (and hence SWR) reads ~2x high and RL ~6 dB low versus the
-    // true match quality.
-    vfwdAvg *= 2.0f;
+    // No FOR/2-style correction here: A0 (Vfwd) and A1 (Vrev) both go through
+    // a matching TLC2272 op-amp stage + 4:1 divider, so rho = Vrev/Vfwd needs
+    // no asymmetry fix (unlike the old PCF8591 bridge).
 
-    float vfwdClamped = vfwdAvg + 0.5f;
-    if (vfwdClamped > 255.0f) vfwdClamped = 255.0f;
-    SWRResult res = {0.0f, 0.0f, (uint8_t)vfwdClamped, (uint8_t)(vrevAvg + 0.5f)};
+    SWRResult res = {0.0f, 0.0f, (uint16_t)(vfwdAvg + 0.5f), (uint16_t)(vrevAvg + 0.5f)};
     if (vfwdAvg < (float)minVfwd) return res;   // no TX signal → swr=0 so UI shows "—"
 
     float rho = (vfwdAvg > 0.0f) ? vrevAvg / vfwdAvg : 1.0f;

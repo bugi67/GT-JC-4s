@@ -450,8 +450,10 @@ void WebUI::otaLocalFW() {
         Update.write(up.buf, up.currentSize);
     } else if (up.status == UPLOAD_FILE_END && started) {
         if (Update.end(true)) {
-            LOG_INFO("OTA", "Local FW flash OK");
+            LOG_INFO("OTA", "Local FW flash OK – rebooting");
             sendJSON(200, "{\"ok\":true}");
+            delay(500);
+            ESP.restart();
         } else {
             sendError(500, Update.errorString());
         }

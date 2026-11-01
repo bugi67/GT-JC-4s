@@ -34,8 +34,8 @@ struct TunerState {
     // SWR measurement
     float    swr        = 99.9f;
     float    returnLoss = 0.0f;   // dB
-    uint8_t  vfwd       = 0;
-    uint8_t  vrev       = 0;
+    uint16_t vfwd       = 0;   // ADS1115 counts (was uint8_t for the old 8-bit PCF8591)
+    uint16_t vrev       = 0;
 
     // K-Tune relay
     bool     kTune     = false;    // 0x39.P3
