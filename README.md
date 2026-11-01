@@ -8,11 +8,11 @@ ESP32-basierte Firmware für einen automatischen HF-Antennentuner (L/C-Netzwerk)
 |---|---|
 | Mikrocontroller | Seeed XIAO ESP32-S3 |
 | I/O-Erweiterung | PCF8574 (I2C) — Relais-Steuerung |
-| ADC | AD8591 (I2C) — SWR-Messung |
+| ADC | ADS1115 16-Bit (I2C) — SWR-Messung |
 | Netzwerk | WiFi 802.11 b/g/n |
 
 **Pinbelegung** (siehe [src/config.h](src/config.h)):
-- SDA / SCL: I2C-Bus für Relais und ADC
+- SDA / SCL: zwei unabhängige I2C-Busse (Relais-Bus + dedizierter ADC-Bus, je über eigenen PCA9517-Buffer)
 - Spannungsversorgung: 3,3 V
 
 ## Funktionen

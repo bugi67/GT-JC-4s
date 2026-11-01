@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-GT-JC-4s is ESP32-S3 (Seeed XIAO) firmware for an automatic HF antenna tuner. It controls L/C relay networks via I2C, measures SWR via an AD8591 ADC, and exposes a Web-UI, REST API, MQTT, and OTA update functionality. Built with PlatformIO + Arduino framework.
+GT-JC-4s is ESP32-S3 (Seeed XIAO) firmware for an automatic HF antenna tuner. It controls L/C relay networks via I2C, measures SWR via an ADS1115 ADC, and exposes a Web-UI, REST API, MQTT, and OTA update functionality. Built with PlatformIO + Arduino framework.
 
 ## Commands
 
@@ -59,11 +59,11 @@ Success threshold: `DEFAULT_TUNE_THRESHOLD` (18 dB return loss ≈ SWR 1.29).
 
 ### I2C hardware mapping ([src/config.h](src/config.h))
 
-Four PCF8574 expanders control the relay matrix:
-- `0x38` / `0x39` — capacitor relays (C bits 0-8 + tuner mode switches)
-- `0x3A` / `0x3B` — inductor relays (L bits 0-10)
+Two independent I2C buses — the ADS1115 does not share a bus with the PCF8574s (see below for why):
+- `Wire` (`I2C_SDA_PIN`/`I2C_SCL_PIN`, GPIO5/6, 100 kHz) — four PCF8574 expanders drive the relay matrix: `0x38`/`0x39` capacitor relays (C bits 0-8 + tuner mode switches), `0x3A`/`0x3B` inductor relays (L bits 0-10). Routed through a dedicated PCA9517 I2C bus buffer to the tuner's 5 V side.
+- `Wire1` (`I2C2_SDA_PIN`/`I2C2_SCL_PIN`, GPIO1/2 = XIAO silkscreen D0/D1, 100 kHz) — exclusively the ADS1115 16-bit ADC (`0x48`), through its own separate dedicated PCA9517 buffer. A0 = Vfwd, A1 = Vrev, each through a TLC2272 op-amp stage + 4:1 divider (matching signal chains on both channels, so no forward/reverse asymmetry correction is needed). `measureSWR()` takes 8 samples per channel with outlier rejection.
 
-SWR is measured from AD8591 ADC (`0x48`): AN0 = Vfwd, AN1 = Vrev. `measureSWR()` takes 8 samples with outlier rejection.
+**Why two buses:** sharing one bus between the ADS1115 and the PCF8574s reliably corrupted every ADS1115 conversion (address ACK and register read/write always worked; the conversion-ready bit never set) — reproduced across weeks of testing, independent of level-shifter type (passive BSS138 or active PCA9517), pull-up values, supply voltage, or decoupling. An isolated breadboard test (same chip, no PCF8574s on the bus) always worked. Giving the ADS1115 a fully separate I2C peripheral fixed it outright.
 
 Presets are stored in an I2C EEPROM at `0x50` (6 bytes each, up to 42 entries sorted by frequency). Device config (WiFi, MQTT, tuner params) is stored in **LittleFS as `/config.json`** via `AppConfig g_cfg` ([src/cfg/AppConfig.h](src/cfg/AppConfig.h)). `Config::load()` / `Config::save()` handle serialisation with ArduinoJson; defaults are applied if the file is missing.
 

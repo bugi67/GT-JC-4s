@@ -1,6 +1,6 @@
-# GT-JC-4s — Projektspezifikation v3.8
+# GT-JC-4s — Projektspezifikation v3.9
 **Antennenkoppler-Steuerung mit AutoTuner**
-Datum: 2026-10-14 | Autor: HB9CZF | Status: Implementiert / In Test
+Datum: 2026-11-01 | Autor: HB9CZF | Status: Implementiert / In Test
 
 ---
 
@@ -16,7 +16,7 @@ Migration des bestehenden Arduino-IDE-Sketches `GT_JC_4s_ESP32C3_20260614.ino` a
 | Architektur | Xtensa LX7, Dual-Core, 240 MHz |
 | RAM | 512 KB SRAM + 8 MB PSRAM |
 | Flash | 8 MB (Partitionstabelle nutzt weiterhin nur ~4 MB, siehe `custom_partitions.csv`) |
-| Level-Shifter | 3.3 V → 5 V (für I2C-Bus zum JC-4s) |
+| I2C-Busse | Zwei unabhängige Busse: `Wire` (GPIO5/6, 100 kHz, 5 V über PCA9517-Buffer) für die 4× PCF8574-Relaistreiber; `Wire1` (GPIO1/2 = D0/D1, 100 kHz, eigener dedizierter PCA9517-Buffer) exklusiv für das ADS1115 — siehe Item 74 |
 | Tuner | Stockcomer JC-4s (Original-Hardware bleibt unverändert) |
 
 ### 1.3 I2C-Geräte (JC-4s intern)
@@ -26,7 +26,7 @@ Migration des bestehenden Arduino-IDE-Sketches `GT_JC_4s_ESP32C3_20260614.ino` a
 | 0x39 | PCF8574AP | C-Bit 8 (1600 pF, P0) + K1 Modus (P1) + K9/K10 Modus (P2) + **K-Tune (P3)** |
 | 0x3A | PCF8574AP | L-Relais L1–L8 (0.078–10 µH, P0–P7) |
 | 0x3B | PCF8574AP | L0 → P3 (0.039 µH), L9 → P0 (20 µH), L10 → P1 (40 µH); P2 = Eingang (Ant A, nie treiben!) |
-| 0x48 | PCF8591 | ADC: AN1 = Vfwd, AN0 = Vrev (Hardware-Kanäle vertauscht) |
+| 0x48 (auf `Wire1`) | ADS1115 | 16-Bit-ADC: A0 = Vfwd, A1 = Vrev, je über TLC2272-Op-Amp-Stufe + 4:1-Teiler; `GAIN_ONE` (±4,096 V, ~125 µV/Count) |
 | 0x50 | PCF8582C | EEPROM 256 Byte (Band-Presets) |
 | 0x51 | PCF8582C | EEPROM 256 Byte (reserviert) |
 
@@ -714,3 +714,4 @@ GT-JC-4s/
 | 71 | Dual-Core-Nutzung auf dem neuen ESP32-S3: alle 5 eigenen Tasks (`taskWeb`, `taskMQTT`, `taskI2C`, `taskTuner`, `taskSerial`) laufen jetzt per `xTaskCreatePinnedToCore()` auf Core 1, Core 0 bleibt dem WiFi/BT-Treiber des SDK vorbehalten (analog zum Pattern in anderen GT-Projekten). Status-LED (`LED_BUILTIN`, aktiv-low) zeigt den WLAN-Status: aus solange nicht verbunden, an (LOW) sobald `WiFi.status()==WL_CONNECTED`, geprüft 1×/s in `loop()` | ✅ |
 | 72 | Inbetriebnahme ESP32-S3 mit angeschlossener Tuner-Hardware abgeschlossen: WLAN-Verbindung über Captive Portal hergestellt (192.168.0.198), MQTT/NTP verbunden. Fine-Tune-Testlauf bestätigt die komplette Kette (I2C-Timing, Relais, ADC-Brücke inkl. FOR/2-Korrektur, Kandidaten-Bestätigung, Dual-Core-Scheduling) funktioniert unverändert: `L=2 C=123 mode=1 SWR=1,00 RL=80 dB`, mehrere Nachbarpunkte ebenfalls bei RL 80 dB bestätigt (breites, stabiles Minimum). `WiFi.setSleep(false)` unverändert aktiv (Code-Review); beobachtete Ping-Jitter (3–98 ms) bei RSSI −80/−81 dBm ist wie beim alten C3-Gerät auf schwaches Signal zurückzuführen, nicht auf Modem-Sleep | ✅ |
 | 73 | Erstes ESP32-S3-Board (COM18) als defekt diagnostiziert (u. a. Captive-Portal-AP war von einem iPhone nicht erreichbar) und durch ein zweites Board ersetzt — neue USB-Seriell-Adresse **COM7** (`platformio.ini`, `CLAUDE.md`, Abschnitt 9.1 aktualisiert). Firmware + Filesystem per USB-Seriell neu geflasht, bootet sauber, Tuner-Hardware am neuen Board angeschlossen und funktionsfähig bestätigt | ✅ |
+| 74 | ADC-Hardware-Migration **PCF8591 → ADS1115** (16-Bit, I2C 0x48) abgeschlossen, nach mehrwöchiger Fehlersuche. Treiber nutzt die `Adafruit_ADS1X15`-Bibliothek (`GAIN_ONE` = ±4,096 V, ~125 µV/Count, `RATE_ADS1115_860SPS`); `readADS1115()` ersetzt deren unbeschränktes `while(!conversionComplete());` durch eine 20-ms-Zeitschranke + 1 s Retry-Throttle pro Kanal — ein einzelner gestörter Status-Read hing sonst `taskI2C` (und damit den ganzen Tuner) dauerhaft auf, nur per Reboot behebbar. **Ursache des eigentlichen Hardware-Fehlers**: das ADS1115 ACKte zuverlässig und `begin()` (Config-Register-Schreib-/Lesezugriff) funktionierte, aber jede tatsächliche AD-Wandlung schlug fehl (Conversion-Ready-Bit wurde nie gesetzt), sobald das ADS1115 den I2C-Bus mit den vier PCF8574-Relaistreibern teilte — reproduzierbar über mehrere Wochen, unabhängig von Pegelwandler-Typ (passiver BSS138 ebenso wie aktiver PCA9517-Bus-Buffer), Pull-up-Dimensionierung, Betriebsspannung (3,3 V/5 V) oder Entstörkondensatoren; ein isolierter Breadboard-Aufbau (gleicher Chip, gleicher TLC2272, mit und ohne Pegelwandler) funktionierte dagegen stets einwandfrei. **Lösung**: ADS1115 erhält einen eigenen, vollständig unabhängigen zweiten I2C-Bus (`Wire1`, XIAO-Pins D0/D1 = GPIO1/GPIO2, eigener dedizierter PCA9517-Buffer) statt sich den PCF8574-Bus (`Wire`, GPIO5/6) zu teilen — seitdem 100 % fehlerfrei, verifiziert über mehrere Minuten Dauerbetrieb und mit realer Testspannung (5 V → 4:1-Teiler → TLC2272 → ADS1115) auf beiden Kanälen (A0/A1) korrekt vermessen. Konstanten `I2C2_SDA_PIN`/`I2C2_SCL_PIN`/`I2C2_FREQ_HZ` in `config.h`; `I2C_FREQ_HZ` nach einem zwischenzeitlichen 50-kHz-Diagnoseversuch wieder auf 100 kHz zurückgesetzt (beide Busse). **Separater Fix im selben Zuge**: `otaLocalFW()` (`POST /ota/local/fw`) rief nach erfolgreichem Flash nie `ESP.restart()` auf (im Gegensatz zum benachbarten `otaLocalFS()`) — neue Firmware wurde zwar korrekt geschrieben und als bootfähig markiert, aber nie aktiv; das Gerät lief bis zum nächsten zufälligen Reset (Absturz oder manueller Stromzyklus) mit der alten Firmware weiter. Betraf das OTA-Verfahren generell, nicht nur diese Fehlersuche | ✅ |
