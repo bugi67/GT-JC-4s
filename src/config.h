@@ -82,6 +82,12 @@ static const float C_PF[] = {
 #define FINE_SETTLE_MS          8       // relay settle before each fine-tune measurement (was 3 — too short, caused RL scatter)
 #define FINE_CONFIRM_SAMPLES    6       // re-measurements averaged per candidate when picking the final fine-tune result
 
+// Submatch (iterative zoom search, replaces the old coarse/interL/medium scan
+// pipeline — see AutoTuner.cpp grundMatch()/subMatch()).
+#define SUBMATCH_CONFIRM_SAMPLES 3      // averaged re-measurements per top-2 candidate at each zoom level
+#define SUBMATCH_EARLY_EXIT_RL   30.0f  // dB RL — reconfirmed match this good ends the zoom early (~SWR 1.065)
+#define SUBMATCH_MAX_LEVELS      12     // safety cap; normal convergence is 5-8 levels
+
 // ── MQTT topics ───────────────────────────────────────────────────────────────
 #define MQTT_ROOT              "JC-4s"
 #define MQTT_SUB_L             MQTT_ROOT "/L"

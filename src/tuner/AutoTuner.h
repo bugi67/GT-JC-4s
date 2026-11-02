@@ -23,14 +23,18 @@ private:
     // Phase 1: preset search
     static bool presetSearch(uint16_t& L, uint16_t& C, uint8_t& mode);
 
-    // Phase 2: coarse scan over all L/C in step increments, all 3 modes
-    static void coarseScan(uint16_t& L, uint16_t& C, uint8_t& mode);
+    // Phase 2: Grundmatch — doubling/geometric grid over the full L/C range,
+    // both modes (1=C@TRX, 2=C@ANT). Returns per-mode L/C/grid so the caller
+    // can zoom the winner and fall back to the other mode if needed.
+    static void grundMatch(uint16_t lGrid[], int& nL, uint16_t cGrid[], int& nC,
+                            uint16_t lByMode[3], uint16_t cByMode[3], float rlByMode[3]);
 
-    // Phase 2.25: inter-L scan — fills L gaps (step/4 intervals) missed by coarse
-    static void interLScan(uint16_t& L, uint16_t& C, uint8_t& mode);
-
-    // Phase 2.5: medium scan — ±1 coarse step around coarse optimum, step/8
-    static void mediumScan(uint16_t& L, uint16_t& C, uint8_t mode);
+    // Phase 2.5: Submatch — iterative zoom around (L,C) at fixed mode: scan a
+    // ±4-step window, reconfirm the top-2 readings with averaging, recenter
+    // on the winner, halve the step, repeat until step=1 or an early-exit
+    // quality threshold is reached.
+    static void subMatch(uint16_t& L, uint16_t& C, uint8_t mode, float& bestRL,
+                          uint16_t initStepL, uint16_t initStepC);
 
     // Phase 3: fine-step within sliding window around coarse optimum
     // verbose=true prints every measurement as a table on Serial

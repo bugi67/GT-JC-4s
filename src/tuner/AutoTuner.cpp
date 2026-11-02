@@ -88,143 +88,154 @@ static void getBandLimits(uint16_t freq_kHz, uint16_t& lMax, uint16_t& cMax) {
     lMax = L_MAX; cMax = C_MAX;  // default: full range
 }
 
-// ── Coarse candidate tracking ────────────────────────────────────────────────
+// ── Grid helpers (Grundmatch / Submatch) ─────────────────────────────────────
+// L/C are literal bit-weighted relay masks (see L_UH[]/C_PF[] in config.h), so
+// a doubling sequence isn't an arbitrary choice — it's "energise one more
+// relay bit at a time."
 
-struct Candidate { uint16_t L, C; uint8_t mode; float RL; };
-
-static Candidate s_cands[3];
-static int       s_nCands;
-
-
-// Add a point to the top-3 diverse candidate list.
-// "Diverse" means each candidate must be more than 1 coarse step away from all
-// others in BOTH L and C — so we explore different regions, not just refine one.
-//
-// Two bugs fixed here after a real-world miss (2026-11-02): a genuine, broad
-// matching plateau (flat ~47dB RL continuously from C=32 to C=80+ at one L/
-// mode) was never found by medium/fine-tune, because consecutive coarse
-// samples land exactly coarse_step apart — the old strict "<" treated them as
-// different regions instead of the same plateau, so the plateau fragmented
-// across several near-identical candidates (each weaker than keeping one
-// unified slot) while an unrelated, noisier point elsewhere won a slot by
-// a single lucky high reading. Also, "near" never checked mode, so a
-// candidate could be silently overwritten by an unrelated point from a
-// different mode that merely landed at a similar L/C.
-static void addCandidate(uint16_t L, uint16_t C, uint8_t mode, float rl) {
-    for (int i = 0; i < s_nCands; i++) {
-        bool sameMode = (mode == s_cands[i].mode);
-        bool nearL = (uint16_t)abs((int)L - (int)s_cands[i].L) <= g_cfg.coarse_step_l;
-        bool nearC = (uint16_t)abs((int)C - (int)s_cands[i].C) <= g_cfg.coarse_step_c;
-        if (sameMode && nearL && nearC) {
-            if (rl > s_cands[i].RL) s_cands[i] = {L, C, mode, rl};
-            return;
-        }
-    }
-    if (s_nCands < 3) { s_cands[s_nCands++] = {L, C, mode, rl}; return; }
-    // Replace weakest if this is better
-    int weak = 0;
-    for (int i = 1; i < 3; i++) if (s_cands[i].RL < s_cands[weak].RL) weak = i;
-    if (rl > s_cands[weak].RL) s_cands[weak] = {L, C, mode, rl};
+// {0, 1, 2, 4, 8, ..., last power-of-2 <= maxVal}, then append maxVal if not
+// already present — guarantees the band-limited top of the range is always
+// sampled even when maxVal isn't a power of two (e.g. 15m band: lMax=195).
+static int buildGeomGrid(uint16_t maxVal, uint16_t out[], int outCap) {
+    int n = 0;
+    out[n++] = 0;
+    for (uint32_t v = 1; v <= maxVal && n < outCap - 1; v <<= 1) out[n++] = (uint16_t)v;
+    if (out[n - 1] != maxVal) out[n++] = maxVal;
+    return n;
 }
 
-// ── Phase 2: Coarse scan ─────────────────────────────────────────────────────
+static int indexOfExact(const uint16_t* grid, int n, uint16_t val) {
+    for (int i = 0; i < n; i++) if (grid[i] == val) return i;
+    return 0;  // shouldn't happen — val always comes from this same grid
+}
 
-void AutoTuner::coarseScan(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
-    float bestRL = -999.0f;
-    I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
-    s_nCands = 0;
+// Level-0 Submatch step from the Grundmatch winner's immediate neighbours in
+// the geometric grid — width = 2x the larger neighbour gap ("roughly double
+// the immediate neighbourhood").
+static uint16_t deriveInitialStep(const uint16_t* grid, int n, uint16_t val) {
+    int idx = indexOfExact(grid, n, val);
+    uint16_t loGap = (idx > 0)     ? (uint16_t)(val - grid[idx - 1]) : val;
+    uint16_t hiGap = (idx < n - 1) ? (uint16_t)(grid[idx + 1] - val) : 0;
+    return max((uint16_t)1, (uint16_t)(max(loGap, hiGap) / 4));
+}
 
+// Up to 9 clamped/deduped points spanning [center-4*step, center+4*step] ∩ [0,maxVal].
+static int genAxisPoints(uint16_t center, uint16_t step, uint16_t maxVal, uint16_t out[9]) {
+    int n = 0;
+    for (int i = -4; i <= 4; i++) {
+        int32_t v = constrain((int32_t)center + i * (int32_t)step, 0, (int32_t)maxVal);
+        if (n == 0 || out[n - 1] != (uint16_t)v) out[n++] = (uint16_t)v;
+    }
+    return n;
+}
+
+// ── Phase 2: Grundmatch ──────────────────────────────────────────────────────
+// Doubling/geometric grid over the full band-limited L/C range, both modes
+// (1=C@TRX, 2=C@ANT; mode 3 "No C" skipped, as before). Replaces the old
+// linear ~2000-point coarse scan with ~100-300 points while still covering
+// the whole space — every grid point other than 0 is a single relay bit.
+
+void AutoTuner::grundMatch(uint16_t lGrid[], int& nL, uint16_t cGrid[], int& nC,
+                            uint16_t lByMode[3], uint16_t cByMode[3], float rlByMode[3]) {
     uint16_t lMax, cMax;
     getBandLimits(stateGet(&TunerState::freq_kHz), lMax, cMax);
-    LOG_INFO("AutoTuner", "Coarse scan: L 0..%u step %u, C 0..%u step %u",
-             lMax, g_cfg.coarse_step_l, cMax, g_cfg.coarse_step_c);
+    nL = buildGeomGrid(lMax, lGrid, 16);
+    nC = buildGeomGrid(cMax, cGrid, 16);
+    LOG_INFO("AutoTuner", "Grundmatch scan: L grid n=%d (0..%u), C grid n=%d (0..%u), modes 1+2",
+             nL, lMax, nC, cMax);
 
-    uint16_t lSteps = (lMax / g_cfg.coarse_step_l) + 1;
-    uint16_t cSteps = (cMax / g_cfg.coarse_step_c) + 1;
-    uint32_t totalSteps = (uint32_t)lSteps * cSteps * 2;  // modes 1+2 only (no "No C")
+    rlByMode[1] = -999.0f; rlByMode[2] = -999.0f;
+    I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
+    uint32_t totalSteps = (uint32_t)nL * nC * 2;
     uint32_t step = 0;
 
-    for (uint8_t m = 1; m <= 2; m++) {  // 1=C@TRX, 2=C@ANT; mode 3 (No C) skipped
-        for (uint16_t c = 0; c <= cMax; c += g_cfg.coarse_step_c) {
-            for (uint16_t l = 0; l <= lMax; l += g_cfg.coarse_step_l) {
+    for (uint8_t m = 1; m <= 2; m++) {
+        for (int ci = 0; ci < nC; ci++) {
+            for (int li = 0; li < nL; li++) {
                 if (isAbortRequested()) {
-                    LOG_INFO("AutoTuner", "Coarse scan aborted");
+                    LOG_INFO("AutoTuner", "Grundmatch aborted");
                     return;
                 }
-                setLCAndWait(l, c, m, FINE_SETTLE_MS);
+                setLCAndWait(lGrid[li], cGrid[ci], m, FINE_SETTLE_MS);
                 xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
                 xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
 
                 float rl = getRL();
-                if (rl > bestRL) { bestRL = rl; bestL = l; bestC = c; bestMode = m; }
-                addCandidate(l, c, m, rl);
+                if (rl > rlByMode[m]) { rlByMode[m] = rl; lByMode[m] = lGrid[li]; cByMode[m] = cGrid[ci]; }
                 step++;
-                reportProgress((uint8_t)(step * 70 / totalSteps));   // 0-70% for coarse
+                reportProgress((uint8_t)(step * 30 / totalSteps));   // 0-30%
             }
         }
     }
-    LOG_INFO("AutoTuner", "Coarse done: L=%u C=%u mode=%u RL=%.1fdB", bestL, bestC, bestMode, bestRL);
 }
 
-// ── Phase 2.25: Inter-L scan ─────────────────────────────────────────────────
-// The coarse scan steps L at coarse_step_l (64). Optimal L values that fall in
-// the gaps (e.g. L=15 between L=0 and L=64) never appear in the coarse top-3.
-// This pass probes the intermediate L values — at coarse_step_l/4 spacing
-// (L=16, 32, 48 for step=64) — against ALL C at the coarse C step.
-// Cost: ~200 measurements (~7 s). The best result feeds an extra medium scan.
+// ── Phase 2.5: Submatch ──────────────────────────────────────────────────────
+// Iterative zoom at a fixed mode: scan a ±4-step window around (L,C), take the
+// top-2 single-shot readings, re-confirm BOTH with averaging, recenter on
+// whichever reconfirms higher, halve the step, repeat. Terminates at step=1
+// in both axes or once a reconfirmed reading clears SUBMATCH_EARLY_EXIT_RL.
+//
+// Re-confirming the top-2 (not just trusting the top-1 single shot) matters:
+// live debugging (2026-11-02) proved a single READ_SWR — already 8-sample-
+// averaged internally — can read 47dB when a stable re-measurement at the
+// exact same point reads 12.7dB. Blindly recentring on one bad single-shot
+// reading wouldn't just corrupt a result here — each level's window is
+// strictly smaller than the last, so a wrong recentre could permanently walk
+// the search away from the real match with no later level able to see it
+// again. Reconfirming before committing a new centre closes that gap.
 
-void AutoTuner::interLScan(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
+void AutoTuner::subMatch(uint16_t& L, uint16_t& C, uint8_t mode, float& bestRL,
+                          uint16_t initStepL, uint16_t initStepC) {
     uint16_t lMax, cMax;
     getBandLimits(stateGet(&TunerState::freq_kHz), lMax, cMax);
-    // Intermediate step: coarse/4, minimum 8 to avoid overlap with fine-tune
-    uint16_t stepL = max((uint16_t)8, (uint16_t)(g_cfg.coarse_step_l / 4));
 
-    float bestRL = -999.0f;
+    // Estimate total levels up front (for progress reporting only) — number
+    // of halvings of the larger initial step until it reaches 1.
+    int totalLevels = 1;
+    for (uint16_t s = max(initStepL, initStepC); s > 1; s = max((uint16_t)1, (uint16_t)(s / 2)))
+        totalLevels++;
+
+    uint16_t stepL = initStepL, stepC = initStepC;
     I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
 
-    for (uint8_t m = 1; m <= 2; m++) {
-        for (uint16_t c = 0; c <= cMax; c += g_cfg.coarse_step_c) {
-            // Only probe intermediate L values — L=0 and L=coarseStep already in coarse
-            for (uint16_t l = stepL; l < g_cfg.coarse_step_l; l += stepL) {
+    for (int level = 0; level < SUBMATCH_MAX_LEVELS; level++) {
+        uint16_t lPts[9], cPts[9];
+        int nL = genAxisPoints(L, stepL, lMax, lPts);
+        int nC = genAxisPoints(C, stepC, cMax, cPts);
+
+        struct { uint16_t L, C; float rl; } top1 = {L, C, -999.0f}, top2 = {L, C, -999.0f};
+
+        for (int ci = 0; ci < nC; ci++) {
+            for (int li = 0; li < nL; li++) {
                 if (isAbortRequested()) return;
-                setLCAndWait(l, c, m, FINE_SETTLE_MS);
+                setLCAndWait(lPts[li], cPts[ci], mode, FINE_SETTLE_MS);
                 xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
                 xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
                 float rl = getRL();
-                if (rl > bestRL) { bestRL = rl; bestL = l; bestC = c; bestMode = m; }
+                if (rl > top1.rl) { top2 = top1; top1 = {lPts[li], cPts[ci], rl}; }
+                else if (rl > top2.rl) { top2 = {lPts[li], cPts[ci], rl}; }
             }
         }
-    }
-    LOG_INFO("AutoTuner", "Inter-L scan best: L=%u C=%u mode=%u RL=%.1f dB", bestL, bestC, bestMode, bestRL);
-}
+        if (isAbortRequested()) return;
 
-// ── Phase 2.5: Medium scan ───────────────────────────────────────────────────
-// Searches ±1 coarse step around the coarse optimum using step/8 granularity.
-// Bridges the gap between coarse step (64) and fine window (±4): without this,
-// the true optimum can be up to ±32 away — outside the fine tune reach.
+        float rl1 = measureAvg(top1.L, top1.C, mode, SUBMATCH_CONFIRM_SAMPLES);
+        float rl2 = (top2.rl > -999.0f) ? measureAvg(top2.L, top2.C, mode, SUBMATCH_CONFIRM_SAMPLES) : -999.0f;
+        if (rl2 > rl1) { L = top2.L; C = top2.C; bestRL = rl2; }
+        else           { L = top1.L; C = top1.C; bestRL = rl1; }
 
-void AutoTuner::mediumScan(uint16_t& bestL, uint16_t& bestC, uint8_t mode) {
-    uint16_t medStepL = max((uint16_t)2, (uint16_t)(g_cfg.coarse_step_l / 8));
-    uint16_t medStepC = max((uint16_t)1, (uint16_t)(g_cfg.coarse_step_c / 4));
-    uint16_t lLo = (bestL >= g_cfg.coarse_step_l) ? bestL - g_cfg.coarse_step_l : 0;
-    uint16_t lHi = min((int)L_MAX, (int)bestL + g_cfg.coarse_step_l);
-    uint16_t cLo = (bestC >= g_cfg.coarse_step_c) ? bestC - g_cfg.coarse_step_c : 0;
-    uint16_t cHi = min((int)C_MAX, (int)bestC + g_cfg.coarse_step_c);
+        LOG_INFO("AutoTuner", "Submatch level %d: L=%u C=%u mode=%u RL=%.1fdB (stepL=%u stepC=%u)",
+                 level, L, C, mode, bestRL, stepL, stepC);
+        reportProgress((uint8_t)(30 + min(level + 1, totalLevels) * 40 / totalLevels));   // 30-70%
 
-    float bestRL = -999.0f;
-    I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
-
-    for (uint16_t c = cLo; c <= cHi; c += medStepC) {
-        for (uint16_t l = lLo; l <= lHi; l += medStepL) {
-            if (isAbortRequested()) return;
-            setLCAndWait(l, c, mode, FINE_SETTLE_MS);
-            xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
-            xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
-            float rl = getRL();
-            if (rl > bestRL) { bestRL = rl; bestL = l; bestC = c; }
+        if (bestRL >= SUBMATCH_EARLY_EXIT_RL) {
+            LOG_INFO("AutoTuner", "Submatch early-exit: RL=%.1f >= %.1f dB", bestRL, (float)SUBMATCH_EARLY_EXIT_RL);
+            return;
         }
+        if (stepL <= 1 && stepC <= 1) return;
+        stepL = max((uint16_t)1, (uint16_t)(stepL / 2));
+        stepC = max((uint16_t)1, (uint16_t)(stepC / 2));
     }
-    LOG_INFO("AutoTuner", "Medium done: L=%u C=%u mode=%u RL=%.1f dB", bestL, bestC, mode, bestRL);
+    LOG_WARN("AutoTuner", "Submatch: hit max levels (%d) without reaching step=1 — unexpected", SUBMATCH_MAX_LEVELS);
 }
 
 // ── Phase 3: Fine-step ───────────────────────────────────────────────────────
@@ -422,55 +433,47 @@ bool AutoTuner::runTune(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
         return true;
     }
 
-    // Phase 2
-    coarseScan(bestL, bestC, bestMode);
+    // Phase 2 — Grundmatch: doubling grid, both modes, tracks the best point
+    // per mode (free — same measurement count as tracking only the overall
+    // best).
+    uint16_t lGrid[16], cGrid[16]; int nL, nC;
+    uint16_t lByMode[3], cByMode[3]; float rlByMode[3] = {-999.0f, -999.0f, -999.0f};
+    grundMatch(lGrid, nL, cGrid, nC, lByMode, cByMode, rlByMode);
     if (isAbortRequested()) return false;
 
-    // Phase 2.25 — inter-L scan: fills coarse L gaps (e.g. L=16,32,48) at all C.
-    // The best result is used as a 4th medium candidate alongside the top-3.
-    uint16_t ilL = 0, ilC = 0; uint8_t ilMode = 1;
-    interLScan(ilL, ilC, ilMode);
+    bestMode = (rlByMode[1] >= rlByMode[2]) ? 1 : 2;
+    bestL = lByMode[bestMode]; bestC = cByMode[bestMode];
+    float bestRL = rlByMode[bestMode];
+    uint8_t otherMode = (bestMode == 1) ? 2 : 1;
+    LOG_INFO("AutoTuner", "Grundmatch done: L=%u C=%u mode=%u RL=%.1fdB (mode %u RL=%.1fdB)",
+             bestL, bestC, bestMode, bestRL, otherMode, rlByMode[otherMode]);
+
+    // Phase 2.5 — Submatch: iterative zoom on the winning mode
+    uint16_t stepL0 = deriveInitialStep(lGrid, nL, bestL);
+    uint16_t stepC0 = deriveInitialStep(cGrid, nC, bestC);
+    subMatch(bestL, bestC, bestMode, bestRL, stepL0, stepC0);
     if (isAbortRequested()) return false;
 
-    // Phase 2.5 — medium scan from top-3 coarse candidates + inter-L best
-    {
-        float overallRL = -999.0f;
-
-        // Top-3 from coarse scan. Each candidate is re-measured with averaging
-        // (not a single shot) before comparing — mediumScan()'s own hill-climb
-        // can land on a genuinely good, narrow point that a single noisy
-        // READ_SWR then talks us out of, handing the tune to a worse candidate.
-        for (int ci = 0; ci < s_nCands; ci++) {
-            uint16_t tL = s_cands[ci].L, tC = s_cands[ci].C; uint8_t tMode = s_cands[ci].mode;
-            LOG_INFO("AutoTuner", "Medium scan %d/%d from L=%u C=%u mode=%u", ci+1, s_nCands, tL, tC, tMode);
-            mediumScan(tL, tC, tMode);
-            if (isAbortRequested()) return false;
-            float rl = measureAvg(tL, tC, tMode, FINE_CONFIRM_SAMPLES);
-            if (rl > overallRL) { overallRL = rl; bestL = tL; bestC = tC; bestMode = tMode; }
+    // Fallback — if the winning mode's zoom still isn't good enough, try the
+    // other mode's Grundmatch point too (mirrors presetSearch()'s own
+    // "good enough" bar — no new threshold invented).
+    if (bestRL < g_cfg.tune_threshold) {
+        LOG_WARN("AutoTuner", "Submatch RL=%.1fdB < threshold %.1fdB — trying mode %u as fallback",
+                 bestRL, g_cfg.tune_threshold, otherMode);
+        uint16_t altL = lByMode[otherMode], altC = cByMode[otherMode];
+        float altRL = rlByMode[otherMode];
+        subMatch(altL, altC, otherMode, altRL,
+                 deriveInitialStep(lGrid, nL, altL), deriveInitialStep(cGrid, nC, altC));
+        if (isAbortRequested()) return false;
+        if (altRL > bestRL) {
+            bestRL = altRL; bestL = altL; bestC = altC; bestMode = otherMode;
+            LOG_INFO("AutoTuner", "Fallback mode %u wins: RL=%.1fdB", otherMode, altRL);
         }
-
-        // Inter-L best — always explore unless already covered by top-3
-        bool ilInCands = false;
-        for (int ci = 0; ci < s_nCands; ci++) {
-            if (ilMode != s_cands[ci].mode) continue;
-            uint16_t dL = (uint16_t)abs((int)ilL - (int)s_cands[ci].L);
-            uint16_t dC = (uint16_t)abs((int)ilC - (int)s_cands[ci].C);
-            if (dL <= g_cfg.coarse_step_l && dC <= g_cfg.coarse_step_c) { ilInCands = true; break; }
-        }
-        if (!ilInCands) {
-            LOG_INFO("AutoTuner", "Medium scan (inter-L) from L=%u C=%u mode=%u", ilL, ilC, ilMode);
-            mediumScan(ilL, ilC, ilMode);
-            if (isAbortRequested()) return false;
-            float rl = measureAvg(ilL, ilC, ilMode, FINE_CONFIRM_SAMPLES);
-            if (rl > overallRL) { overallRL = rl; bestL = ilL; bestC = ilC; bestMode = ilMode; }
-            LOG_INFO("AutoTuner", "Medium inter-L result: L=%u C=%u mode=%u RL=%.1f dB", ilL, ilC, ilMode, rl);
-        }
-
-        LOG_INFO("AutoTuner", "Medium best: L=%u C=%u mode=%u RL=%.1f dB", bestL, bestC, bestMode, overallRL);
     }
     if (isAbortRequested()) return false;
 
     // Phase 3
+    reportProgress(80);   // fineTune()'s own progress math is hardcoded "80 + iter*4"
     setLCAndWait(bestL, bestC, bestMode);
     fineTune(bestL, bestC, bestMode);
 
