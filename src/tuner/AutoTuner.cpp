@@ -144,7 +144,19 @@ void AutoTuner::grundMatch(uint16_t lGrid[], int& nL, uint16_t cGrid[], int& nC,
     LOG_INFO("AutoTuner", "Grundmatch scan: L grid n=%d (0..%u), C grid n=%d (0..%u), modes 1+2",
              nL, lMax, nC, cMax);
 
-    rlByMode[1] = -999.0f; rlByMode[2] = -999.0f;
+    // Track the top-2 single-shot readings per mode, not just a single running
+    // best — a plain "if (rl > best)" tracker has no protection against noise,
+    // and a later noisy spike can silently and permanently discard an earlier,
+    // genuinely excellent (often broad) matching region with no way to recover
+    // it. Confirmed live (2026-11-02, 25Ω load): grundMatch() reported L=256
+    // C=128 mode=1 as the winner, but L=0-8/C=100-160 was a real, broad, ~45dB
+    // plateau measured earlier in the same scan — it just lost a one-shot
+    // numeric comparison to a later noisy reading at a point that, on direct
+    // re-measurement, isn't a real match at all. Same class of bug as the
+    // original addCandidate() issue, just one phase upstream.
+    struct Top2 { uint16_t L, C; float rl; } top1[3], top2[3];
+    top1[1] = top1[2] = top2[1] = top2[2] = {0, 0, -999.0f};
+
     I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
     uint32_t totalSteps = (uint32_t)nL * nC * 2;
     uint32_t step = 0;
@@ -156,16 +168,27 @@ void AutoTuner::grundMatch(uint16_t lGrid[], int& nL, uint16_t cGrid[], int& nC,
                     LOG_INFO("AutoTuner", "Grundmatch aborted");
                     return;
                 }
-                setLCAndWait(lGrid[li], cGrid[ci], m, FINE_SETTLE_MS);
+                setLCAndWait(lGrid[li], cGrid[ci], m, GRUNDMATCH_SETTLE_MS);
                 xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
                 xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
 
                 float rl = getRL();
-                if (rl > rlByMode[m]) { rlByMode[m] = rl; lByMode[m] = lGrid[li]; cByMode[m] = cGrid[ci]; }
+                if (rl > top1[m].rl) { top2[m] = top1[m]; top1[m] = {lGrid[li], cGrid[ci], rl}; }
+                else if (rl > top2[m].rl) { top2[m] = {lGrid[li], cGrid[ci], rl}; }
                 step++;
                 reportProgress((uint8_t)(step * 30 / totalSteps));   // 0-30%
             }
         }
+    }
+
+    // Re-confirm each mode's top-2 with averaging before committing to a
+    // winner — same noise protection subMatch() already uses per level.
+    for (uint8_t m = 1; m <= 2; m++) {
+        float rl1 = measureAvg(top1[m].L, top1[m].C, m, SUBMATCH_CONFIRM_SAMPLES);
+        float rl2 = (top2[m].rl > -999.0f)
+                        ? measureAvg(top2[m].L, top2[m].C, m, SUBMATCH_CONFIRM_SAMPLES) : -999.0f;
+        if (rl2 > rl1) { lByMode[m] = top2[m].L; cByMode[m] = top2[m].C; rlByMode[m] = rl2; }
+        else           { lByMode[m] = top1[m].L; cByMode[m] = top1[m].C; rlByMode[m] = rl1; }
     }
 }
 

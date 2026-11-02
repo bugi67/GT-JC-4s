@@ -87,6 +87,14 @@ static const float C_PF[] = {
 #define SUBMATCH_CONFIRM_SAMPLES 3      // averaged re-measurements per top-2 candidate at each zoom level
 #define SUBMATCH_EARLY_EXIT_RL   30.0f  // dB RL — reconfirmed match this good ends the zoom early (~SWR 1.065)
 #define SUBMATCH_MAX_LEVELS      12     // safety cap; normal convergence is 5-8 levels
+// Grundmatch jumps are far bigger than FINE_SETTLE_MS (8ms) was tuned for —
+// L wraps from its top value back to 0 every time C increments, a large
+// simultaneous multi-relay-bit change. Testing whether that under-settles
+// the very points right after each wrap (2026-11-02, 25Ω load: a confirmed-
+// real, stable ~45dB region at L=0-8 was reading as near-total-reflection
+// during the fast scan, with top-2 reconfirmation already ruled out as the
+// cause). Matches measureAvg()'s settle time as the known-good reference.
+#define GRUNDMATCH_SETTLE_MS     20
 
 // ── MQTT topics ───────────────────────────────────────────────────────────────
 #define MQTT_ROOT              "JC-4s"
