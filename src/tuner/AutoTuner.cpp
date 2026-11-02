@@ -4,6 +4,7 @@
 #include "../config.h"
 #include "../cfg/AppConfig.h"
 #include "../logger/Logger.h"
+#include <math.h>
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -572,15 +573,18 @@ void AutoTuner::taskAutoTuner(void* param) {
             ok = runTune(L, C, mode);
         }
 
-        // Apply best result and measure final SWR
+        // Apply best result and measure final SWR — averaged (FINE_CONFIRM_SAMPLES),
+        // not a single READ_SWR: right at a near-perfect null, Vrev is only a
+        // handful of ADC counts (near the noise floor), so one single-shot read
+        // can land notably worse than the already-averaged value the search
+        // itself confirmed, even though the L/C setting is genuinely correct.
+        // Averaging here keeps the displayed/published result consistent with
+        // what the algorithm actually verified, instead of re-rolling the dice.
         // 20 ms settle: relay de-energise (spring return) can take up to ~10 ms
-        setLCAndWait(L, C, mode, 20);
-        I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
-        xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
-        xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
-
-        float finalSWR, finalRL;
-        { StateLock lock; finalSWR = g_state.swr; finalRL = g_state.returnLoss; }
+        float finalRL = measureAvg(L, C, mode, FINE_CONFIRM_SAMPLES);
+        float finalRho = powf(10.0f, -finalRL / 20.0f);
+        float finalSWR = (finalRho < 1.0f) ? (1.0f + finalRho) / (1.0f - finalRho) : 999.0f;
+        { StateLock lock; g_state.swr = finalSWR; g_state.returnLoss = finalRL; }
 
         auto finalState = ok ? TunerState::TuneState::DONE : TunerState::TuneState::ABORTED;
         { StateLock lock; g_state.tuneState = finalState; }
