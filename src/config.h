@@ -67,10 +67,12 @@ static const float C_PF[] = {
 // ── AutoTuner defaults ────────────────────────────────────────────────────────
 #define DEFAULT_TUNE_THRESHOLD  18.0f   // dB Return Loss (~SWR 1.29)
 // min Vfwd (ADS1115 counts, ~125 µV/count at ±4.096V PGA) to consider a carrier
-// present. Placeholder scaled from the old 8-bit default (10/255 ≈ 4% of full
-// scale) — needs recalibrating against real RF once the new front-end's
-// actual output levels are known.
-#define DEFAULT_TX_LEVEL        1300
+// present (below this, measureSWR() returns swr=0 so the Web-GUI shows "—"
+// instead of noise-floor garbage). Calibrated 2026-11-02 against real
+// hardware: floating/no-TX noise sits at ~5-7 counts, 1W @ 3530 kHz reads
+// ~242 counts — 50 sits with wide margin above the noise floor and well
+// below any real signal, including low-power transmissions.
+#define DEFAULT_TX_LEVEL        50
 #define DEFAULT_COARSE_L        64
 #define DEFAULT_COARSE_C        16
 #define FINE_WINDOW_SIZE        9       // ±4 steps around optimum
