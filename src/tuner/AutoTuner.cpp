@@ -45,7 +45,7 @@ bool AutoTuner::presetSearch(uint16_t& L, uint16_t& C, uint8_t& mode) {
     setLCAndWait(best.L, best.C, best.mode);
     I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
     xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
-    vTaskDelay(pdMS_TO_TICKS(20));
+    xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
 
     float rl = getRL();
     LOG_INFO("AutoTuner", "Preset SWR: RL=%.1f dB (threshold=%.1f)", rl, g_cfg.tune_threshold);
@@ -97,13 +97,25 @@ static int       s_nCands;
 
 
 // Add a point to the top-3 diverse candidate list.
-// "Diverse" means each candidate must be at least 1 coarse step away from all
+// "Diverse" means each candidate must be more than 1 coarse step away from all
 // others in BOTH L and C — so we explore different regions, not just refine one.
+//
+// Two bugs fixed here after a real-world miss (2026-11-02): a genuine, broad
+// matching plateau (flat ~47dB RL continuously from C=32 to C=80+ at one L/
+// mode) was never found by medium/fine-tune, because consecutive coarse
+// samples land exactly coarse_step apart — the old strict "<" treated them as
+// different regions instead of the same plateau, so the plateau fragmented
+// across several near-identical candidates (each weaker than keeping one
+// unified slot) while an unrelated, noisier point elsewhere won a slot by
+// a single lucky high reading. Also, "near" never checked mode, so a
+// candidate could be silently overwritten by an unrelated point from a
+// different mode that merely landed at a similar L/C.
 static void addCandidate(uint16_t L, uint16_t C, uint8_t mode, float rl) {
     for (int i = 0; i < s_nCands; i++) {
-        bool nearL = (uint16_t)abs((int)L - (int)s_cands[i].L) < g_cfg.coarse_step_l;
-        bool nearC = (uint16_t)abs((int)C - (int)s_cands[i].C) < g_cfg.coarse_step_c;
-        if (nearL && nearC) {
+        bool sameMode = (mode == s_cands[i].mode);
+        bool nearL = (uint16_t)abs((int)L - (int)s_cands[i].L) <= g_cfg.coarse_step_l;
+        bool nearC = (uint16_t)abs((int)C - (int)s_cands[i].C) <= g_cfg.coarse_step_c;
+        if (sameMode && nearL && nearC) {
             if (rl > s_cands[i].RL) s_cands[i] = {L, C, mode, rl};
             return;
         }
@@ -139,9 +151,9 @@ void AutoTuner::coarseScan(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) 
                     LOG_INFO("AutoTuner", "Coarse scan aborted");
                     return;
                 }
-                setLCAndWait(l, c, m, 3);
+                setLCAndWait(l, c, m, FINE_SETTLE_MS);
                 xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
-                vTaskDelay(pdMS_TO_TICKS(15));
+                xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
 
                 float rl = getRL();
                 if (rl > bestRL) { bestRL = rl; bestL = l; bestC = c; bestMode = m; }
@@ -175,9 +187,9 @@ void AutoTuner::interLScan(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) 
             // Only probe intermediate L values — L=0 and L=coarseStep already in coarse
             for (uint16_t l = stepL; l < g_cfg.coarse_step_l; l += stepL) {
                 if (isAbortRequested()) return;
-                setLCAndWait(l, c, m, 3);
+                setLCAndWait(l, c, m, FINE_SETTLE_MS);
                 xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
-                vTaskDelay(pdMS_TO_TICKS(15));
+                xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
                 float rl = getRL();
                 if (rl > bestRL) { bestRL = rl; bestL = l; bestC = c; bestMode = m; }
             }
@@ -205,9 +217,9 @@ void AutoTuner::mediumScan(uint16_t& bestL, uint16_t& bestC, uint8_t mode) {
     for (uint16_t c = cLo; c <= cHi; c += medStepC) {
         for (uint16_t l = lLo; l <= lHi; l += medStepL) {
             if (isAbortRequested()) return;
-            setLCAndWait(l, c, mode, 3);
+            setLCAndWait(l, c, mode, FINE_SETTLE_MS);
             xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
-            vTaskDelay(pdMS_TO_TICKS(15));
+            xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
             float rl = getRL();
             if (rl > bestRL) { bestRL = rl; bestL = l; bestC = c; }
         }
@@ -289,7 +301,7 @@ void AutoTuner::fineTune(uint16_t& bestL, uint16_t& bestC, uint8_t mode, bool ve
             if (l < 0 || l > L_MAX) continue;
             setLCAndWait((uint16_t)l, bestC, mode, FINE_SETTLE_MS);
             xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
-            vTaskDelay(pdMS_TO_TICKS(15));
+            xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
             float rl  = getRL();
             float swr = stateGet(&TunerState::swr);
             if (rl > bestRL) { bestRL = rl; newL = (uint16_t)l; }
@@ -327,7 +339,7 @@ void AutoTuner::fineTune(uint16_t& bestL, uint16_t& bestC, uint8_t mode, bool ve
             if (c < 0 || c > C_MAX) continue;
             setLCAndWait(bestL, (uint16_t)c, mode, FINE_SETTLE_MS);
             xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
-            vTaskDelay(pdMS_TO_TICKS(15));
+            xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
             float rl  = getRL();
             float swr = stateGet(&TunerState::swr);
             if (rl > bestRLC) { bestRLC = rl; newC = (uint16_t)c; }
@@ -390,7 +402,7 @@ float AutoTuner::measureAvg(uint16_t L, uint16_t C, uint8_t mode, int samples) {
     float sum = 0.0f; int n = 0;
     for (int i = 0; i < samples; i++) {
         xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
-        vTaskDelay(pdMS_TO_TICKS(20));
+        xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
         float rl = getRL();
         if (rl > 80.0f) rl = 80.0f;   // clamp "perfect" (Vrev≈0) so one read can't dominate the mean
         sum += rl; n++;
@@ -440,9 +452,10 @@ bool AutoTuner::runTune(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
         // Inter-L best — always explore unless already covered by top-3
         bool ilInCands = false;
         for (int ci = 0; ci < s_nCands; ci++) {
+            if (ilMode != s_cands[ci].mode) continue;
             uint16_t dL = (uint16_t)abs((int)ilL - (int)s_cands[ci].L);
             uint16_t dC = (uint16_t)abs((int)ilC - (int)s_cands[ci].C);
-            if (dL < g_cfg.coarse_step_l && dC < g_cfg.coarse_step_c) { ilInCands = true; break; }
+            if (dL <= g_cfg.coarse_step_l && dC <= g_cfg.coarse_step_c) { ilInCands = true; break; }
         }
         if (!ilInCands) {
             LOG_INFO("AutoTuner", "Medium scan (inter-L) from L=%u C=%u mode=%u", ilL, ilC, ilMode);
@@ -484,6 +497,7 @@ void AutoTuner::taskAutoTuner(void* param) {
             g_state.tuneProgress = 0;
         }
         xSemaphoreTake(g_tuneAbortSem, 0);   // drain stale abort
+        xSemaphoreTake(g_swrDoneSem,   0);   // drain stale give (e.g. a prior run aborted mid-measurement)
 
         // K-Tune is no longer required for a tune run (the ADS1115 bridge is
         // always in the RF path, unlike the old PCF8591 sense circuit) — the
@@ -511,7 +525,7 @@ void AutoTuner::taskAutoTuner(void* param) {
         setLCAndWait(L, C, mode, 20);
         I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
         xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
-        vTaskDelay(pdMS_TO_TICKS(50));        // give I2C task time to complete READ_SWR
+        xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
 
         float finalSWR, finalRL;
         { StateLock lock; finalSWR = g_state.swr; finalRL = g_state.returnLoss; }

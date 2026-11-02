@@ -17,7 +17,8 @@
 // D0/D1 = GPIO1/GPIO2.
 #define I2C2_SDA_PIN       1   // D0
 #define I2C2_SCL_PIN       2   // D1
-#define I2C2_FREQ_HZ       100000
+#define I2C2_FREQ_HZ       400000   // Fast Mode — safe here since nothing else
+                                    // shares this bus; ADS1115 supports it
 
 // Onboard user LED (XIAO ESP32-S3, GPIO21 via LED_BUILTIN), active-low like
 // the rest of the Seeed XIAO family (LOW = on). Lit while WiFi is connected —

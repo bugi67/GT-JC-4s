@@ -152,9 +152,13 @@ static uint16_t readADS1115(uint8_t channel) {
     s_lastAttempt[channel] = millis();
 
     s_ads.startADCReading(MUX_BY_CHANNEL[channel], /*continuous=*/false);
+    // 860SPS converts in ~1.16ms; wait that out up front instead of hammering
+    // the bus with repeated status-register transactions from t=0 — normally
+    // turns the poll below into a single confirming read instead of several.
+    delayMicroseconds(1250);
     unsigned long t0 = millis();
     while (!s_ads.conversionComplete()) {
-        if (millis() - t0 > 20) {   // ~1.2ms expected @ 860SPS — generous margin
+        if (millis() - t0 > 20) {   // generous margin beyond the expected ~1.2ms
             LOG_ERROR("I2C", "ADS1115 ch%u: conversion timeout", channel);
             s_lastOk[channel] = false;
             return 0;
@@ -298,15 +302,23 @@ void I2CController::taskI2C(void* param) {
             } else if (cmd.cmd == I2CCmd::READ_SWR) {
                 SWRResult r = measureSWR(g_cfg.tune_tx_level);
                 SenseInputs s = readSenseInputs();
-                StateLock lock;
-                g_state.swr        = r.swr;
-                g_state.returnLoss = r.returnLoss;
-                g_state.vfwd       = r.vfwd;
-                g_state.vrev       = r.vrev;
-                g_state.fPwr       = s.fPwr;
-                g_state.zHigh      = s.zHigh;
-                g_state.zLow       = s.zLow;
-                g_state.phase      = s.phase;
+                {
+                    StateLock lock;
+                    g_state.swr        = r.swr;
+                    g_state.returnLoss = r.returnLoss;
+                    g_state.vfwd       = r.vfwd;
+                    g_state.vrev       = r.vrev;
+                    g_state.fPwr       = s.fPwr;
+                    g_state.zHigh      = s.zHigh;
+                    g_state.zLow       = s.zLow;
+                    g_state.phase      = s.phase;
+                }
+                // AutoTuner blocks on this instead of guessing a fixed delay
+                // before reading g_state. Only given here, not from the idle-
+                // loop background refresh below — that one has no waiter and
+                // would otherwise risk unblocking AutoTuner with an unrelated
+                // measurement's result.
+                xSemaphoreGive(g_swrDoneSem);
             } else if (cmd.cmd == I2CCmd::SET_KTUNE) {
                 uint16_t C; uint8_t mode;
                 {

@@ -78,6 +78,11 @@ extern SemaphoreHandle_t   g_stateMutex;
 extern SemaphoreHandle_t   g_tuneStartSem;
 extern SemaphoreHandle_t   g_fineTuneStartSem;
 extern SemaphoreHandle_t   g_tuneAbortSem;
+// Given by taskI2C after a READ_SWR command finishes updating g_state —
+// AutoTuner blocks on this instead of guessing a fixed delay before reading
+// the result (measureSWR() duration isn't constant; a fixed delay can read
+// stale state from the previous point during a fast scan).
+extern SemaphoreHandle_t   g_swrDoneSem;
 extern QueueHandle_t       g_i2cCmdQueue;
 
 // ── Convenience RAII-style accessors ─────────────────────────────────────────

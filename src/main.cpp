@@ -22,6 +22,7 @@ SemaphoreHandle_t g_stateMutex    = nullptr;
 SemaphoreHandle_t g_tuneStartSem     = nullptr;
 SemaphoreHandle_t g_fineTuneStartSem = nullptr;
 SemaphoreHandle_t g_tuneAbortSem     = nullptr;
+SemaphoreHandle_t g_swrDoneSem       = nullptr;
 QueueHandle_t     g_i2cCmdQueue   = nullptr;
 
 // ── Serial console task ───────────────────────────────────────────────────────
@@ -105,6 +106,7 @@ void setup() {
     g_tuneStartSem      = xSemaphoreCreateBinary();
     g_fineTuneStartSem  = xSemaphoreCreateBinary();
     g_tuneAbortSem      = xSemaphoreCreateBinary();
+    g_swrDoneSem        = xSemaphoreCreateBinary();
     g_i2cCmdQueue  = xQueueCreate(I2C_CMD_QUEUE_DEPTH, sizeof(I2CCommand));
 
     // 6. I2C + hardware probe
