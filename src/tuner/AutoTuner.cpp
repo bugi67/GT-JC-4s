@@ -485,10 +485,10 @@ void AutoTuner::taskAutoTuner(void* param) {
         }
         xSemaphoreTake(g_tuneAbortSem, 0);   // drain stale abort
 
-        // K-Tune ON before tuning starts
-        { I2CCommand k = {}; k.cmd = I2CCmd::SET_KTUNE; k.kTune = true;
-          xQueueSend(g_i2cCmdQueue, &k, portMAX_DELAY); }
-        vTaskDelay(pdMS_TO_TICKS(30));        // relay settle
+        // K-Tune is no longer required for a tune run (the ADS1115 bridge is
+        // always in the RF path, unlike the old PCF8591 sense circuit) — the
+        // relay stays untouched here; the manual button/API still exist for
+        // diagnostics.
 
         uint16_t L, C; uint8_t mode; bool ok;
 
@@ -506,21 +506,15 @@ void AutoTuner::taskAutoTuner(void* param) {
             ok = runTune(L, C, mode);
         }
 
-        // Apply best result and measure final SWR (with K-Tune still ON)
+        // Apply best result and measure final SWR
         // 20 ms settle: relay de-energise (spring return) can take up to ~10 ms
         setLCAndWait(L, C, mode, 20);
         I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
         xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
         vTaskDelay(pdMS_TO_TICKS(50));        // give I2C task time to complete READ_SWR
 
-        // Capture SWR now, before K-Tune OFF triggers a background measurement
         float finalSWR, finalRL;
         { StateLock lock; finalSWR = g_state.swr; finalRL = g_state.returnLoss; }
-
-        // K-Tune OFF after tuning ends
-        { I2CCommand k = {}; k.cmd = I2CCmd::SET_KTUNE; k.kTune = false;
-          xQueueSend(g_i2cCmdQueue, &k, portMAX_DELAY); }
-        vTaskDelay(pdMS_TO_TICKS(30));        // relay settle
 
         auto finalState = ok ? TunerState::TuneState::DONE : TunerState::TuneState::ABORTED;
         { StateLock lock; g_state.tuneState = finalState; }
