@@ -231,7 +231,15 @@ void AutoTuner::subMatch(uint16_t& L, uint16_t& C, uint8_t mode, float& bestRL,
         for (int ci = 0; ci < nC; ci++) {
             for (int li = 0; li < nL; li++) {
                 if (isAbortRequested()) return;
-                setLCAndWait(lPts[li], cPts[ci], mode, FINE_SETTLE_MS);
+                // GRUNDMATCH_SETTLE_MS, not FINE_SETTLE_MS: early Submatch
+                // levels still make large relay jumps (step starts at whatever
+                // deriveInitialStep() computed, often double digits) — the
+                // same under-settling that broke Grundmatch applies here too
+                // until step shrinks to fineTune()-sized single steps. Live-
+                // confirmed 2026-11-02: Grundmatch found a genuine 38dB point,
+                // but Submatch's own level-0 re-scan of it (at FINE_SETTLE_MS)
+                // read it as ~5dB and walked away into a worse local optimum.
+                setLCAndWait(lPts[li], cPts[ci], mode, GRUNDMATCH_SETTLE_MS);
                 xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
                 xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
                 float rl = getRL();
@@ -498,7 +506,25 @@ bool AutoTuner::runTune(uint16_t& bestL, uint16_t& bestC, uint8_t& bestMode) {
     // Phase 3
     reportProgress(80);   // fineTune()'s own progress math is hardcoded "80 + iter*4"
     setLCAndWait(bestL, bestC, bestMode);
+
+    // fineTune() re-measures its own starting point fresh rather than trusting
+    // Submatch's already-confirmed bestRL, and near a true null Vrev is only a
+    // few ADC counts — right at the noise floor — so even an averaged
+    // re-measurement can occasionally read notably worse than reality (live-
+    // confirmed 2026-11-02: Submatch reconfirmed L=2/C=96 at 45.1dB, but
+    // fineTune()'s own fresh baseline read low enough that its "never regress
+    // below the start" guarantee only protected a degraded number, discarding
+    // a result as real as L=2/C=113's directly-verified 44.5dB). Keep
+    // Submatch's confirmed result as a floor fineTune() can't silently lose.
+    uint16_t preFineL = bestL, preFineC = bestC; float preFineRL = bestRL;
     fineTune(bestL, bestC, bestMode);
+    float postFineRL = measureAvg(bestL, bestC, bestMode, FINE_CONFIRM_SAMPLES);
+    if (preFineRL > postFineRL) {
+        LOG_WARN("AutoTuner", "Fine-tune result RL=%.1fdB worse than Submatch's confirmed L=%u C=%u RL=%.1fdB — keeping Submatch's",
+                 postFineRL, preFineL, preFineC, preFineRL);
+        bestL = preFineL; bestC = preFineC;
+        setLCAndWait(bestL, bestC, bestMode);
+    }
 
     reportProgress(100);
     return true;
