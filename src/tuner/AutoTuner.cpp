@@ -46,7 +46,7 @@ bool AutoTuner::presetSearch(uint16_t& L, uint16_t& C, uint8_t& mode) {
     setLCAndWait(best.L, best.C, best.mode);
     I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
     xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
-    xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
+    xSemaphoreTake(g_swrDoneSem, portMAX_DELAY);  // never proceed on a stale/incomplete measurement
 
     float rl = getRL();
     LOG_INFO("AutoTuner", "Preset SWR: RL=%.1f dB (threshold=%.1f)", rl, g_cfg.tune_threshold);
@@ -171,7 +171,7 @@ void AutoTuner::grundMatch(uint16_t lGrid[], int& nL, uint16_t cGrid[], int& nC,
                 }
                 setLCAndWait(lGrid[li], cGrid[ci], m, GRUNDMATCH_SETTLE_MS);
                 xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
-                xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
+                xSemaphoreTake(g_swrDoneSem, portMAX_DELAY);  // never proceed on a stale/incomplete measurement
 
                 float rl = getRL();
                 if (rl > top1[m].rl) { top2[m] = top1[m]; top1[m] = {lGrid[li], cGrid[ci], rl}; }
@@ -222,6 +222,30 @@ void AutoTuner::subMatch(uint16_t& L, uint16_t& C, uint8_t mode, float& bestRL,
     uint16_t stepL = initStepL, stepC = initStepC;
     I2CCommand mCmd = {I2CCmd::READ_SWR, 0, 0, 0};
 
+    // Incumbent: the best confirmed (L,C,RL) seen so far, starting from the
+    // caller's already-confirmed value (e.g. Grundmatch's winner). A level's
+    // own result only replaces it if it's genuinely BETTER — it's never
+    // discarded just because one noisy re-scan of the same neighbourhood came
+    // back worse. Originally added after live debugging (2026-11-03, 100Ω
+    // load) where Submatch's level-0 reconfirmation of Grundmatch's winner
+    // disagreed with Grundmatch's own averaged confirmation (39.4dB vs
+    // 2.8dB) at the identical point. Root cause turned out NOT to be ADC
+    // noise at high RL (ruled out: a firmware-side settling-curve test showed
+    // the analog chain reaches its true value, good or bad, within ~90ms —
+    // nowhere near either value's reading — and the true bad-point Vrev was
+    // ~400 counts, two orders of magnitude above the noise floor). The real
+    // cause was every measureAvg()/scan-loop READ_SWR wait using
+    // xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100)) with the result
+    // unchecked — measureSWR()'s genuine duration over the 100kHz I2C bus is
+    // ~108ms, so that wait reliably timed out and fell through to whatever
+    // g_state still held from the PRIOR measurement, silently reading one
+    // point behind. Fixed at the source by waiting on portMAX_DELAY instead
+    // (see every g_swrDoneSem wait in this file) — confirmed live immediately
+    // after: Grundmatch itself stopped producing the spurious point. This
+    // incumbent-tracking stays as cheap extra protection against a genuinely
+    // noisy single-shot reading, not as a workaround for the fixed bug.
+    uint16_t incL = L, incC = C; float incRL = bestRL;
+
     for (int level = 0; level < SUBMATCH_MAX_LEVELS; level++) {
         uint16_t lPts[9], cPts[9];
         int nL = genAxisPoints(L, stepL, lMax, lPts);
@@ -242,7 +266,7 @@ void AutoTuner::subMatch(uint16_t& L, uint16_t& C, uint8_t mode, float& bestRL,
                 // read it as ~5dB and walked away into a worse local optimum.
                 setLCAndWait(lPts[li], cPts[ci], mode, GRUNDMATCH_SETTLE_MS);
                 xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
-                xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
+                xSemaphoreTake(g_swrDoneSem, portMAX_DELAY);  // never proceed on a stale/incomplete measurement
                 float rl = getRL();
                 if (rl > top1.rl) { top2 = top1; top1 = {lPts[li], cPts[ci], rl}; }
                 else if (rl > top2.rl) { top2 = {lPts[li], cPts[ci], rl}; }
@@ -252,11 +276,18 @@ void AutoTuner::subMatch(uint16_t& L, uint16_t& C, uint8_t mode, float& bestRL,
 
         float rl1 = measureAvg(top1.L, top1.C, mode, SUBMATCH_CONFIRM_SAMPLES);
         float rl2 = (top2.rl > -999.0f) ? measureAvg(top2.L, top2.C, mode, SUBMATCH_CONFIRM_SAMPLES) : -999.0f;
-        if (rl2 > rl1) { L = top2.L; C = top2.C; bestRL = rl2; }
-        else           { L = top1.L; C = top1.C; bestRL = rl1; }
+        uint16_t levelL, levelC; float levelRL;
+        if (rl2 > rl1) { levelL = top2.L; levelC = top2.C; levelRL = rl2; }
+        else           { levelL = top1.L; levelC = top1.C; levelRL = rl1; }
 
-        LOG_INFO("AutoTuner", "Submatch level %d: L=%u C=%u mode=%u RL=%.1fdB (stepL=%u stepC=%u)",
-                 level, L, C, mode, bestRL, stepL, stepC);
+        // Update the incumbent only on genuine improvement; otherwise keep
+        // zooming around the still-better incumbent rather than chasing this
+        // level's worse (possibly just noisier) result.
+        if (levelRL > incRL) { incL = levelL; incC = levelC; incRL = levelRL; }
+        L = incL; C = incC; bestRL = incRL;
+
+        LOG_INFO("AutoTuner", "Submatch level %d: L=%u C=%u mode=%u RL=%.1fdB (stepL=%u stepC=%u, this level found L=%u C=%u %.1fdB)",
+                 level, L, C, mode, bestRL, stepL, stepC, levelL, levelC, levelRL);
         reportProgress((uint8_t)(30 + min(level + 1, totalLevels) * 40 / totalLevels));   // 30-70%
 
         if (bestRL >= SUBMATCH_EARLY_EXIT_RL) {
@@ -344,7 +375,7 @@ void AutoTuner::fineTune(uint16_t& bestL, uint16_t& bestC, uint8_t mode, bool ve
             if (l < 0 || l > L_MAX) continue;
             setLCAndWait((uint16_t)l, bestC, mode, FINE_SETTLE_MS);
             xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
-            xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
+            xSemaphoreTake(g_swrDoneSem, portMAX_DELAY);  // never proceed on a stale/incomplete measurement
             float rl  = getRL();
             float swr = stateGet(&TunerState::swr);
             if (rl > bestRL) { bestRL = rl; newL = (uint16_t)l; }
@@ -382,7 +413,7 @@ void AutoTuner::fineTune(uint16_t& bestL, uint16_t& bestC, uint8_t mode, bool ve
             if (c < 0 || c > C_MAX) continue;
             setLCAndWait(bestL, (uint16_t)c, mode, FINE_SETTLE_MS);
             xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
-            xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
+            xSemaphoreTake(g_swrDoneSem, portMAX_DELAY);  // never proceed on a stale/incomplete measurement
             float rl  = getRL();
             float swr = stateGet(&TunerState::swr);
             if (rl > bestRLC) { bestRLC = rl; newC = (uint16_t)c; }
@@ -445,7 +476,7 @@ float AutoTuner::measureAvg(uint16_t L, uint16_t C, uint8_t mode, int samples) {
     float sum = 0.0f; int n = 0;
     for (int i = 0; i < samples; i++) {
         xQueueSend(g_i2cCmdQueue, &mCmd, portMAX_DELAY);
-        xSemaphoreTake(g_swrDoneSem, pdMS_TO_TICKS(100));
+        xSemaphoreTake(g_swrDoneSem, portMAX_DELAY);  // never proceed on a stale/incomplete measurement
         float rl = getRL();
         if (rl > 80.0f) rl = 80.0f;   // clamp "perfect" (Vrev≈0) so one read can't dominate the mean
         sum += rl; n++;
