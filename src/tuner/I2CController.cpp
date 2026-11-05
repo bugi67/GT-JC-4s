@@ -170,6 +170,48 @@ static uint16_t readADS1115(uint8_t channel) {
     return raw > 0 ? (uint16_t)raw : 0;
 }
 
+// RF power calibration curve (ADS1115 voltage -> watts), measured directly
+// on this hardware (2026-11-05, 50 ohm load, SWR 1.01-1.02 throughout) rather
+// than borrowed from a sensor datasheet — an initial attempt using WaveNode's
+// published HF-1/UHF-1 POWER_CAL_3 curve was off by ~3.5x against a real 5W
+// reference, showing this coupler/divider/buffer chain has its own transfer
+// characteristic, not WaveNode's. The 6 real points below span 1-10W (the
+// only range available for live calibration); the per-segment exponent
+// (power vs. voltage) rises smoothly from ~1.0 near 1-2W to ~1.8 near 7-10W,
+// consistent with a real diode detector's transition from its square-law
+// (low-level, V proportional to power) toward its linear (higher-level, V
+// proportional to RF voltage amplitude) region — not measurement noise.
+// Source power levels are the Elecraft KX3's own front-panel setting, not an
+// inline power meter — good enough to fit a sane curve shape, but the whole
+// table's absolute scale should be rechecked against a real inline power
+// meter when available. Readings above 10W extrapolate linearly past the
+// last segment; treat them as indicative only until recalibrated with real
+// higher-power points.
+struct PowerCalPoint { float volts, watts; };
+static const PowerCalPoint GTJC4S_PWR_CAL[] = {
+    {0.00000f,  0.0f},
+    {0.03250f,  1.0f},   // vfwd=260
+    {0.06488f,  2.0f},   // vfwd=519
+    {0.08975f,  3.0f},   // vfwd=718
+    {0.12125f,  5.0f},   // vfwd=970
+    {0.15263f,  7.0f},   // vfwd=1221
+    {0.18575f, 10.0f},   // vfwd=1486
+};
+static const int GTJC4S_PWR_CAL_N = sizeof(GTJC4S_PWR_CAL) / sizeof(GTJC4S_PWR_CAL[0]);
+
+// Piecewise-linear interpolation over the table above; extrapolates linearly
+// past the last point rather than clamping at 10W, since nothing stops a
+// higher-power run from being logged even if it's past the calibrated range.
+static float wavenodePowerW(float voltageV) {
+    if (voltageV <= GTJC4S_PWR_CAL[0].volts) return 0.0f;
+    int i = 1;
+    while (i < GTJC4S_PWR_CAL_N - 1 && voltageV > GTJC4S_PWR_CAL[i].volts) i++;
+    const PowerCalPoint& a = GTJC4S_PWR_CAL[i - 1];
+    const PowerCalPoint& b = GTJC4S_PWR_CAL[i];
+    float t = (voltageV - a.volts) / (b.volts - a.volts);
+    return a.watts + t * (b.watts - a.watts);
+}
+
 SWRResult I2CController::measureSWR(uint16_t minVfwd) {
     uint16_t samples[TUNE_MEASUREMENTS];
     uint16_t revSamples[TUNE_MEASUREMENTS];
@@ -202,7 +244,11 @@ SWRResult I2CController::measureSWR(uint16_t minVfwd) {
     // a matching TLC2272 op-amp stage + 4:1 divider, so rho = Vrev/Vfwd needs
     // no asymmetry fix (unlike the old PCF8591 bridge).
 
-    SWRResult res = {0.0f, 0.0f, (uint16_t)(vfwdAvg + 0.5f), (uint16_t)(vrevAvg + 0.5f)};
+    float powerFwdW = wavenodePowerW(vfwdAvg * ADS1115_VOLTS_PER_COUNT);
+    float powerRevW = wavenodePowerW(vrevAvg * ADS1115_VOLTS_PER_COUNT);
+
+    SWRResult res = {0.0f, 0.0f, (uint16_t)(vfwdAvg + 0.5f), (uint16_t)(vrevAvg + 0.5f),
+                      powerFwdW, powerRevW};
     if (vfwdAvg < (float)minVfwd) return res;   // no TX signal → swr=0 so UI shows "—"
 
     float rho = (vfwdAvg > 0.0f) ? vrevAvg / vfwdAvg : 1.0f;
@@ -210,8 +256,8 @@ SWRResult I2CController::measureSWR(uint16_t minVfwd) {
     res.returnLoss = -20.0f * log10f(rho);
     res.swr = (1.0f + rho) / (1.0f - rho);
 
-    LOG_DEBUG("I2C", "SWR meas: vfwd=%.2f vrev=%.2f rho=%.4f SWR=%.2f RL=%.1fdB",
-              vfwdAvg, vrevAvg, rho, res.swr, res.returnLoss);
+    LOG_DEBUG("I2C", "SWR meas: vfwd=%.2f vrev=%.2f rho=%.4f SWR=%.2f RL=%.1fdB Pfwd=%.1fW Prev=%.1fW",
+              vfwdAvg, vrevAvg, rho, res.swr, res.returnLoss, powerFwdW, powerRevW);
     return res;
 }
 
@@ -308,6 +354,8 @@ void I2CController::taskI2C(void* param) {
                     g_state.returnLoss = r.returnLoss;
                     g_state.vfwd       = r.vfwd;
                     g_state.vrev       = r.vrev;
+                    g_state.powerFwdW  = r.powerFwdW;
+                    g_state.powerRevW  = r.powerRevW;
                     g_state.fPwr       = s.fPwr;
                     g_state.zHigh      = s.zHigh;
                     g_state.zLow       = s.zLow;
@@ -356,6 +404,8 @@ void I2CController::taskI2C(void* param) {
                 g_state.returnLoss = r.returnLoss;
                 g_state.vfwd       = r.vfwd;
                 g_state.vrev       = r.vrev;
+                g_state.powerFwdW  = r.powerFwdW;
+                g_state.powerRevW  = r.powerRevW;
                 g_state.fPwr       = s.fPwr;
                 g_state.zHigh      = s.zHigh;
                 g_state.zLow       = s.zLow;

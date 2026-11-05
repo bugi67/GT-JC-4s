@@ -202,7 +202,7 @@ tr:hover td { background: var(--hover); }
 .sp-grid { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 4px; }
 .sp-cell { padding: 11px 10px; text-align: center; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .sp-cell:nth-child(2n)  { border-right: none; }
-.sp-cell:nth-child(n+3) { border-bottom: none; }
+.sp-cell:nth-last-child(-n+2) { border-bottom: none; }
 .sp-cell-num { font-size: 1.15rem; font-weight: 700; color: var(--accent); line-height: 1.1; }
 .sp-cell-lbl { font-size: .62rem; color: var(--text2); margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
 .sp-cell-sub { font-size: .72rem; font-weight: 600; color: var(--text3); line-height: 1.1; margin-top: 2px; }
@@ -609,6 +609,14 @@ tr:hover td { background: var(--hover); }
       <div class="sp-cell-lbl" data-i18n="lbl_freq_kHz">Freq (kHz)</div>
     </div>
     <div class="sp-cell">
+      <div class="sp-cell-num" id="sp-pwr-fwd">—</div>
+      <div class="sp-cell-lbl" data-i18n="lbl_pwr_fwd">P fwd (W)</div>
+    </div>
+    <div class="sp-cell">
+      <div class="sp-cell-num" id="sp-pwr-rev">—</div>
+      <div class="sp-cell-lbl" data-i18n="lbl_pwr_rev">P rev (W)</div>
+    </div>
+    <div class="sp-cell">
       <div class="sp-cell-num" id="sp-l">—</div>
       <div class="sp-cell-sub" id="sp-l-uh">—</div>
       <div class="sp-cell-lbl">L</div>
@@ -736,6 +744,7 @@ const STR = {
     title_system: 'System', btn_reboot: 'Reboot',
     confirm_reboot: 'Reboot the device?', rebooting: 'Rebooting…',
     sp_header: 'Tuner Stats', lbl_swr: 'SWR', lbl_freq_kHz: 'Freq (kHz)',
+    lbl_pwr_fwd: 'P fwd (W)', lbl_pwr_rev: 'P rev (W)',
     sp_tune_status: 'Tune Status', sp_ota: 'OTA',
     tune_idle: 'Idle', lbl_fw: 'Firmware', lbl_time: 'Time',
     lbl_ntp_server: 'NTP Server',
@@ -779,6 +788,7 @@ const STR = {
     title_system: 'System', btn_reboot: 'Neustart',
     confirm_reboot: 'Gerät neu starten?', rebooting: 'Starte neu…',
     sp_header: 'Tuner-Status', lbl_swr: 'SWR', lbl_freq_kHz: 'Frequenz (kHz)',
+    lbl_pwr_fwd: 'P vor (W)', lbl_pwr_rev: 'P refl (W)',
     sp_tune_status: 'Abstimmung', sp_ota: 'OTA',
     tune_idle: 'Bereit', lbl_fw: 'Firmware', lbl_time: 'Uhrzeit',
     lbl_ntp_server: 'NTP-Server',
@@ -833,7 +843,7 @@ $('btn-lang').addEventListener('click', () => {
 const state = {
   L: 0, C: 0, L_uH: null, C_pF: null, mode: 1, kTune: false, freq_kHz: 0,
   fPwr: null, zHigh: null, zLow: null, phase: null,
-  swr: 0, returnLoss: 0,
+  swr: 0, returnLoss: 0, powerFwdW: 0, powerRevW: 0,
   tuneState: 0, tuneProgress: 0,
   otaState: 0,  otaProgress: 0,
   rssi: 0, fwVersion: '?', wifiSsid: '', mqttConnected: false,
@@ -884,6 +894,8 @@ function syncStats() {
 
   $('sp-rl').textContent   = state.returnLoss > 0 ? state.returnLoss.toFixed(1) : '—';
   $('sp-freq').textContent = state.freq_kHz || '—';
+  $('sp-pwr-fwd').textContent = state.swr > 0 ? state.powerFwdW.toFixed(1) : '—';
+  $('sp-pwr-rev').textContent = state.swr > 0 ? state.powerRevW.toFixed(1) : '—';
   $('sp-l').textContent    = state.L;
   $('sp-c').textContent    = state.C;
   $('sp-l-uh').textContent = state.L_uH != null ? state.L_uH.toFixed(2) + ' µH' : '—';

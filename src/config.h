@@ -42,6 +42,7 @@
 // divider output at full RF drive turns out to sit well under ~2V (GAIN_TWO,
 // ~2x the resolution) or over ~4V (GAIN_TWOTHIRDS, ±6.144V).
 #define ADDR_ADS1115       0x48
+#define ADS1115_VOLTS_PER_COUNT 0.000125f   // GAIN_ONE: 4.096V / 32768 counts
 #define ADDR_EEPROM_PRESET 0x50   // Band presets (256 bytes)
 #define ADDR_EEPROM_CFG    0x51   // Configuration (256 bytes)
 
@@ -110,6 +111,8 @@ static const float C_PF[] = {
 #define MQTT_PUB_L_UH          MQTT_ROOT "/L_uH"
 #define MQTT_PUB_C_PF          MQTT_ROOT "/C_pF"
 #define MQTT_PUB_SWR           MQTT_ROOT "/swr"
+#define MQTT_PUB_PWR_FWD       MQTT_ROOT "/power/fwd"   // watts, WaveNode HF-1/UHF-1 cal curve
+#define MQTT_PUB_PWR_REV       MQTT_ROOT "/power/rev"
 #define MQTT_PUB_RSSI          MQTT_ROOT "/rssi"
 #define MQTT_PUB_ID            MQTT_ROOT "/id"
 #define MQTT_PUB_TUNE_STATUS   MQTT_ROOT "/tune/status"
