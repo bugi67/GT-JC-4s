@@ -9,7 +9,7 @@ struct SWRResult {
     uint16_t vfwd;       // ADS1115 counts (was uint8_t for the old 8-bit PCF8591)
     uint16_t vrev;
     float powerFwdW;     // forward power, watts (WaveNode HF-1/UHF-1 cal curve)
-    float powerRevW;     // reflected power, watts
+    float powerRefW;     // reflected power, watts
 };
 
 // Raw hardware sense inputs on 0x39.P4-P7. Polarity (which level = which

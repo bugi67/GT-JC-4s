@@ -601,20 +601,20 @@ tr:hover td { background: var(--hover); }
 
   <div class="sp-grid">
     <div class="sp-cell">
+      <div class="sp-cell-num" id="sp-pwr-fwd">—</div>
+      <div class="sp-cell-lbl" data-i18n="lbl_pwr_fwd">P fwd (W)</div>
+    </div>
+    <div class="sp-cell">
+      <div class="sp-cell-num" id="sp-pwr-ref">—</div>
+      <div class="sp-cell-lbl" data-i18n="lbl_pwr_ref">P ref (W)</div>
+    </div>
+    <div class="sp-cell">
       <div class="sp-cell-num" id="sp-rl">—</div>
       <div class="sp-cell-lbl">RL (dB)</div>
     </div>
     <div class="sp-cell">
       <div class="sp-cell-num" id="sp-freq">—</div>
       <div class="sp-cell-lbl" data-i18n="lbl_freq_kHz">Freq (kHz)</div>
-    </div>
-    <div class="sp-cell">
-      <div class="sp-cell-num" id="sp-pwr-fwd">—</div>
-      <div class="sp-cell-lbl" data-i18n="lbl_pwr_fwd">P fwd (W)</div>
-    </div>
-    <div class="sp-cell">
-      <div class="sp-cell-num" id="sp-pwr-rev">—</div>
-      <div class="sp-cell-lbl" data-i18n="lbl_pwr_rev">P rev (W)</div>
     </div>
     <div class="sp-cell">
       <div class="sp-cell-num" id="sp-l">—</div>
@@ -744,7 +744,7 @@ const STR = {
     title_system: 'System', btn_reboot: 'Reboot',
     confirm_reboot: 'Reboot the device?', rebooting: 'Rebooting…',
     sp_header: 'Tuner Stats', lbl_swr: 'SWR', lbl_freq_kHz: 'Freq (kHz)',
-    lbl_pwr_fwd: 'P fwd (W)', lbl_pwr_rev: 'P rev (W)',
+    lbl_pwr_fwd: 'P fwd (W)', lbl_pwr_ref: 'P ref (W)',
     sp_tune_status: 'Tune Status', sp_ota: 'OTA',
     tune_idle: 'Idle', lbl_fw: 'Firmware', lbl_time: 'Time',
     lbl_ntp_server: 'NTP Server',
@@ -788,7 +788,7 @@ const STR = {
     title_system: 'System', btn_reboot: 'Neustart',
     confirm_reboot: 'Gerät neu starten?', rebooting: 'Starte neu…',
     sp_header: 'Tuner-Status', lbl_swr: 'SWR', lbl_freq_kHz: 'Frequenz (kHz)',
-    lbl_pwr_fwd: 'P vor (W)', lbl_pwr_rev: 'P refl (W)',
+    lbl_pwr_fwd: 'P vor (W)', lbl_pwr_ref: 'P ref (W)',
     sp_tune_status: 'Abstimmung', sp_ota: 'OTA',
     tune_idle: 'Bereit', lbl_fw: 'Firmware', lbl_time: 'Uhrzeit',
     lbl_ntp_server: 'NTP-Server',
@@ -843,7 +843,7 @@ $('btn-lang').addEventListener('click', () => {
 const state = {
   L: 0, C: 0, L_uH: null, C_pF: null, mode: 1, kTune: false, freq_kHz: 0,
   fPwr: null, zHigh: null, zLow: null, phase: null,
-  swr: 0, returnLoss: 0, powerFwdW: 0, powerRevW: 0,
+  swr: 0, returnLoss: 0, powerFwdW: 0, powerRefW: 0,
   tuneState: 0, tuneProgress: 0,
   otaState: 0,  otaProgress: 0,
   rssi: 0, fwVersion: '?', wifiSsid: '', mqttConnected: false,
@@ -895,7 +895,7 @@ function syncStats() {
   $('sp-rl').textContent   = state.returnLoss > 0 ? state.returnLoss.toFixed(1) : '—';
   $('sp-freq').textContent = state.freq_kHz || '—';
   $('sp-pwr-fwd').textContent = state.swr > 0 ? state.powerFwdW.toFixed(1) : '—';
-  $('sp-pwr-rev').textContent = state.swr > 0 ? state.powerRevW.toFixed(1) : '—';
+  $('sp-pwr-ref').textContent = state.swr > 0 ? state.powerRefW.toFixed(1) : '—';
   $('sp-l').textContent    = state.L;
   $('sp-c').textContent    = state.C;
   $('sp-l-uh').textContent = state.L_uH != null ? state.L_uH.toFixed(2) + ' µH' : '—';

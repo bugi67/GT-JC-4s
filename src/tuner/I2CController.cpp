@@ -245,10 +245,10 @@ SWRResult I2CController::measureSWR(uint16_t minVfwd) {
     // no asymmetry fix (unlike the old PCF8591 bridge).
 
     float powerFwdW = wavenodePowerW(vfwdAvg * ADS1115_VOLTS_PER_COUNT);
-    float powerRevW = wavenodePowerW(vrevAvg * ADS1115_VOLTS_PER_COUNT);
+    float powerRefW = wavenodePowerW(vrevAvg * ADS1115_VOLTS_PER_COUNT);
 
     SWRResult res = {0.0f, 0.0f, (uint16_t)(vfwdAvg + 0.5f), (uint16_t)(vrevAvg + 0.5f),
-                      powerFwdW, powerRevW};
+                      powerFwdW, powerRefW};
     if (vfwdAvg < (float)minVfwd) return res;   // no TX signal → swr=0 so UI shows "—"
 
     float rho = (vfwdAvg > 0.0f) ? vrevAvg / vfwdAvg : 1.0f;
@@ -257,7 +257,7 @@ SWRResult I2CController::measureSWR(uint16_t minVfwd) {
     res.swr = (1.0f + rho) / (1.0f - rho);
 
     LOG_DEBUG("I2C", "SWR meas: vfwd=%.2f vrev=%.2f rho=%.4f SWR=%.2f RL=%.1fdB Pfwd=%.1fW Prev=%.1fW",
-              vfwdAvg, vrevAvg, rho, res.swr, res.returnLoss, powerFwdW, powerRevW);
+              vfwdAvg, vrevAvg, rho, res.swr, res.returnLoss, powerFwdW, powerRefW);
     return res;
 }
 
@@ -355,7 +355,7 @@ void I2CController::taskI2C(void* param) {
                     g_state.vfwd       = r.vfwd;
                     g_state.vrev       = r.vrev;
                     g_state.powerFwdW  = r.powerFwdW;
-                    g_state.powerRevW  = r.powerRevW;
+                    g_state.powerRefW  = r.powerRefW;
                     g_state.fPwr       = s.fPwr;
                     g_state.zHigh      = s.zHigh;
                     g_state.zLow       = s.zLow;
@@ -405,7 +405,7 @@ void I2CController::taskI2C(void* param) {
                 g_state.vfwd       = r.vfwd;
                 g_state.vrev       = r.vrev;
                 g_state.powerFwdW  = r.powerFwdW;
-                g_state.powerRevW  = r.powerRevW;
+                g_state.powerRefW  = r.powerRefW;
                 g_state.fPwr       = s.fPwr;
                 g_state.zHigh      = s.zHigh;
                 g_state.zLow       = s.zLow;

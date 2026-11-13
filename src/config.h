@@ -111,8 +111,8 @@ static const float C_PF[] = {
 #define MQTT_PUB_L_UH          MQTT_ROOT "/L_uH"
 #define MQTT_PUB_C_PF          MQTT_ROOT "/C_pF"
 #define MQTT_PUB_SWR           MQTT_ROOT "/swr"
-#define MQTT_PUB_PWR_FWD       MQTT_ROOT "/power/fwd"   // watts, WaveNode HF-1/UHF-1 cal curve
-#define MQTT_PUB_PWR_REV       MQTT_ROOT "/power/rev"
+#define MQTT_PUB_PWR_FWD       MQTT_ROOT "/power/fwd"   // watts, measured cal curve (see GTJC4S_PWR_CAL)
+#define MQTT_PUB_PWR_REF       MQTT_ROOT "/power/ref"
 #define MQTT_PUB_RSSI          MQTT_ROOT "/rssi"
 #define MQTT_PUB_ID            MQTT_ROOT "/id"
 #define MQTT_PUB_TUNE_STATUS   MQTT_ROOT "/tune/status"

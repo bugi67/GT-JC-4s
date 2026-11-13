@@ -59,7 +59,7 @@ String WebUI::buildStatusJSON() {
     doc["vfwd"]        = g_state.vfwd;
     doc["vrev"]        = g_state.vrev;
     doc["powerFwdW"]  = serialized(String(g_state.powerFwdW, 1));
-    doc["powerRevW"]  = serialized(String(g_state.powerRevW, 1));
+    doc["powerRefW"]  = serialized(String(g_state.powerRefW, 1));
     doc["kTune"]       = g_state.kTune;
     doc["fPwr"]        = g_state.fPwr;    // sense inputs, raw (polarity uncalibrated)
     doc["zHigh"]       = g_state.zHigh;
@@ -377,7 +377,7 @@ void WebUI::pushSSE() {
     if (!s_sseClient) return;
     if (!s_sseClient.connected()) { s_sseClient.stop(); s_sseClient = WiFiClient(); return; }
 
-    float swr, rl, powerFwdW, powerRevW; uint16_t L, C, freq; uint8_t tp, op, mode; int8_t rssi; bool kTune;
+    float swr, rl, powerFwdW, powerRefW; uint16_t L, C, freq; uint8_t tp, op, mode; int8_t rssi; bool kTune;
     bool fPwr, zHigh, zLow, phase;
     TunerState::TuneState ts; TunerState::OtaState os;
     {
@@ -385,7 +385,7 @@ void WebUI::pushSSE() {
         swr   = g_state.swr;
         rl    = g_state.returnLoss;
         powerFwdW = g_state.powerFwdW;
-        powerRevW = g_state.powerRevW;
+        powerRefW = g_state.powerRefW;
         L     = g_state.L;
         C     = g_state.C;
         mode  = g_state.mode;
@@ -427,13 +427,13 @@ void WebUI::pushSSE() {
         char buf[512];
         snprintf(buf, sizeof(buf),
             "data:{\"swr\":%.2f,\"returnLoss\":%.1f,"
-            "\"powerFwdW\":%.1f,\"powerRevW\":%.1f,"
+            "\"powerFwdW\":%.1f,\"powerRefW\":%.1f,"
             "\"L\":%u,\"C\":%u,\"L_uH\":%.2f,\"C_pF\":%.0f,"
             "\"mode\":%u,\"kTune\":%d,\"freq_kHz\":%u,"
             "\"fPwr\":%d,\"zHigh\":%d,\"zLow\":%d,\"phase\":%d,"
             "\"rssi\":%d,\"tuneState\":%d,\"tuneProgress\":%d,"
             "\"otaState\":%d,\"otaProgress\":%d}\n\n",
-            swr, rl, powerFwdW, powerRevW, L, C, calcLuH(L), calcCpF(C),
+            swr, rl, powerFwdW, powerRefW, L, C, calcLuH(L), calcCpF(C),
             mode, kTune ? 1 : 0, freq,
             fPwr ? 1 : 0, zHigh ? 1 : 0, zLow ? 1 : 0, phase ? 1 : 0,
             rssi, (int)ts, tp, (int)os, op);

@@ -222,14 +222,14 @@ void MQTTClient::publishStatus() {
     char buf[24];
     uint16_t L, C; uint8_t mode; float swr; bool kTune;
     bool fPwr, zHigh, zLow, phase;
-    float powerFwdW, powerRevW;
+    float powerFwdW, powerRefW;
     {
         StateLock lock;
         L = g_state.L; C = g_state.C; mode = g_state.mode;
         swr = g_state.swr; kTune = g_state.kTune;
         fPwr = g_state.fPwr; zHigh = g_state.zHigh;
         zLow = g_state.zLow; phase = g_state.phase;
-        powerFwdW = g_state.powerFwdW; powerRevW = g_state.powerRevW;
+        powerFwdW = g_state.powerFwdW; powerRefW = g_state.powerRefW;
     }
 
     snprintf(buf, sizeof(buf), "%u", L);
@@ -247,8 +247,8 @@ void MQTTClient::publishStatus() {
     s_mqtt.publish(MQTT_PUB_SWR, buf);
     snprintf(buf, sizeof(buf), "%.1f", powerFwdW);
     s_mqtt.publish(MQTT_PUB_PWR_FWD, buf);
-    snprintf(buf, sizeof(buf), "%.1f", powerRevW);
-    s_mqtt.publish(MQTT_PUB_PWR_REV, buf);
+    snprintf(buf, sizeof(buf), "%.1f", powerRefW);
+    s_mqtt.publish(MQTT_PUB_PWR_REF, buf);
     s_mqtt.publish(MQTT_PUB_FB_KTUNE, kTune ? "1" : "0");
     // Sense inputs, raw (polarity not yet calibrated) — published on every
     // status burst, which fires on every L/C step during Fine-Tune/AutoTune.

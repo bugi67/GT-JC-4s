@@ -37,7 +37,7 @@ struct TunerState {
     uint16_t vfwd       = 0;   // ADS1115 counts (was uint8_t for the old 8-bit PCF8591)
     uint16_t vrev       = 0;
     float    powerFwdW  = 0.0f;   // watts, WaveNode HF-1/UHF-1 cal curve
-    float    powerRevW  = 0.0f;
+    float    powerRefW  = 0.0f;
 
     // K-Tune relay
     bool     kTune     = false;    // 0x39.P3
