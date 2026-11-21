@@ -272,6 +272,7 @@ void MQTTClient::taskMQTT(void* param) {
     (void)param;
     static unsigned long lastRssi        = 0;  // g_state update (always)
     static unsigned long lastRssiPublish = 0;  // MQTT publish (when connected)
+    static unsigned long lastStatusPublish = 0;
     static TunerState::TuneState lastTuneState = TunerState::TuneState::IDLE;
     static uint16_t lastL     = 0xFFFF;
     static uint16_t lastC     = 0xFFFF;
@@ -343,9 +344,18 @@ void MQTTClient::taskMQTT(void* param) {
                                                        curZLow != lastZLow || curPhase != lastPhase);
                     senseSeen = true;
                     lastFPwr = curFPwr; lastZHigh = curZHigh; lastZLow = curZLow; lastPhase = curPhase;
+
+                    // Periodic fallback for SWR/power/etc: fast while transmitting
+                    // (RF but no relay movement, e.g. no AutoTune running, would
+                    // otherwise never republish), slow while idle.
+                    bool transmitting = stateGet(&TunerState::powerFwdW) > 0.0f;
+                    unsigned long statusInterval = transmitting ? STATUS_INTERVAL_TX_MS : STATUS_INTERVAL_IDLE_MS;
+                    bool statusDue = millis() - lastStatusPublish > statusInterval;
+
                     if (curL != lastL || curC != lastC || curMode != lastMode || curKTune != lastKTune ||
-                        curFreq != lastFreq || senseChanged) {
+                        curFreq != lastFreq || senseChanged || statusDue) {
                         lastL = curL; lastC = curC; lastMode = curMode; lastKTune = curKTune; lastFreq = curFreq;
+                        lastStatusPublish = millis();
                         publishStatus();
                     }
                 }

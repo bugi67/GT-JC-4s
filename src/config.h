@@ -141,6 +141,12 @@ static const float C_PF[] = {
 #define DEFAULT_MQTT_PORT      1883
 #define MQTT_RECONNECT_MS      5000
 #define RSSI_INTERVAL_MS       10000
+// publishStatus() (SWR/power/L/C/etc.) is otherwise edge-triggered on L/C/
+// mode/kTune/freq/sense-input changes, so keying RF without changing the
+// tuner's position (e.g. no AutoTune running) never republished SWR/power
+// at all. Periodic fallback: fast while transmitting, slow while idle.
+#define STATUS_INTERVAL_TX_MS  500
+#define STATUS_INTERVAL_IDLE_MS 10000
 #define WEB_PORT               80
 #define SSE_PORT               81   // Server-Sent Events on a separate socket so the held-open
                                     // stream never occupies the single-client WebServer on :80
