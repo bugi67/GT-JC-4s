@@ -273,6 +273,7 @@ void MQTTClient::taskMQTT(void* param) {
     static unsigned long lastRssi        = 0;  // g_state update (always)
     static unsigned long lastRssiPublish = 0;  // MQTT publish (when connected)
     static unsigned long lastStatusPublish = 0;
+    static bool          lastTransmitting  = false;
     static TunerState::TuneState lastTuneState = TunerState::TuneState::IDLE;
     static uint16_t lastL     = 0xFFFF;
     static uint16_t lastC     = 0xFFFF;
@@ -347,13 +348,19 @@ void MQTTClient::taskMQTT(void* param) {
 
                     // Periodic fallback for SWR/power/etc: fast while transmitting
                     // (RF but no relay movement, e.g. no AutoTune running, would
-                    // otherwise never republish), slow while idle.
+                    // otherwise never republish), slow while idle. The unkey edge
+                    // itself must force an immediate publish -- otherwise the
+                    // interval switches to the slow 10s one right as RF drops, and
+                    // the last (nonzero) transmitting values just sit unpublished
+                    // on the broker for up to another 10s before finally updating.
                     bool transmitting = stateGet(&TunerState::powerFwdW) > 0.0f;
+                    bool txEdge = transmitting != lastTransmitting;
+                    lastTransmitting = transmitting;
                     unsigned long statusInterval = transmitting ? STATUS_INTERVAL_TX_MS : STATUS_INTERVAL_IDLE_MS;
                     bool statusDue = millis() - lastStatusPublish > statusInterval;
 
                     if (curL != lastL || curC != lastC || curMode != lastMode || curKTune != lastKTune ||
-                        curFreq != lastFreq || senseChanged || statusDue) {
+                        curFreq != lastFreq || senseChanged || statusDue || txEdge) {
                         lastL = curL; lastC = curC; lastMode = curMode; lastKTune = curKTune; lastFreq = curFreq;
                         lastStatusPublish = millis();
                         publishStatus();
