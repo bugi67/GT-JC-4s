@@ -126,6 +126,10 @@ static const float C_PF[] = {
 #define MQTT_PUB_LOG           MQTT_ROOT "/log"
 #define MQTT_PUB_IP            MQTT_ROOT "/ip"
 #define MQTT_PUB_MAC           MQTT_ROOT "/mac"
+// Availability (LWT): "online" (retained) on connect + periodic heartbeat,
+// broker auto-publishes "offline" (retained) if the device drops off
+// uncleanly. Same pattern as GT-Banddecoder/GT-LP100-Wifi-Converter.
+#define MQTT_PUB_STATUS        MQTT_ROOT "/status"
 
 // ── Network ───────────────────────────────────────────────────────────────────
 #define AP_SSID                "GT-JC-4s-Setup"

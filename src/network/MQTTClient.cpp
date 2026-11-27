@@ -184,10 +184,11 @@ bool MQTTClient::ensureConnected() {
 
     char clientId[24];
     snprintf(clientId, sizeof(clientId), "GT-JC-4s-%06llX", (uint64_t)ESP.getEfuseMac() & 0xFFFFFF);
-    if (s_mqtt.connect(clientId)) {
+    if (s_mqtt.connect(clientId, nullptr, nullptr, MQTT_PUB_STATUS, 1, true, "offline")) {
         g_mqttConnectedAt = millis();   // retained-message suppression window starts now
         LOG_INFO("MQTT", "Connected as %s", clientId);
         subscribe();
+        s_mqtt.publish(MQTT_PUB_STATUS, "online", true);
         s_mqtt.publish(MQTT_PUB_ID, FIRMWARE_VERSION, true);
         {
             String ip  = WiFi.localIP().toString();
@@ -274,6 +275,7 @@ void MQTTClient::taskMQTT(void* param) {
     static unsigned long lastRssiPublish = 0;  // MQTT publish (when connected)
     static unsigned long lastStatusPublish = 0;
     static bool          lastTransmitting  = false;
+    static unsigned long lastStatusHeartbeat = 0;
     static TunerState::TuneState lastTuneState = TunerState::TuneState::IDLE;
     static uint16_t lastL     = 0xFFFF;
     static uint16_t lastC     = 0xFFFF;
@@ -316,6 +318,14 @@ void MQTTClient::taskMQTT(void* param) {
                         char buf[8];
                         snprintf(buf, sizeof(buf), "%d", stateGet(&TunerState::rssi));
                         s_mqtt.publish(MQTT_PUB_RSSI, buf);
+                    }
+
+                    // "online" heartbeat every 10 s -- the connect-time publish
+                    // (retained) already covers subscribers joining late, this
+                    // just gives continuous proof of life between connects.
+                    if (millis() - lastStatusHeartbeat > RSSI_INTERVAL_MS) {
+                        lastStatusHeartbeat = millis();
+                        s_mqtt.publish(MQTT_PUB_STATUS, "online");
                     }
 
                     // Publish tune state changes
